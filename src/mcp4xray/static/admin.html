@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - mcp4xray</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="admin-container">
+        <header id="admin-header">
+            <h1>Admin Panel</h1>
+            <a href="/" id="back-link">Back to Chat</a>
+        </header>
+
+        <section id="invite-section">
+            <h2>Invite Codes</h2>
+            <button id="generate-btn" onclick="generateInvite()">Generate Invite Code</button>
+            <div id="generated-code" class="hidden">
+                <span id="code-display"></span>
+                <button id="copy-btn" onclick="copyToClipboard()">Copy</button>
+            </div>
+            <table id="invites-table">
+                <thead>
+                    <tr>
+                        <th>Code</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Used By</th>
+                    </tr>
+                </thead>
+                <tbody id="invites-body"></tbody>
+            </table>
+        </section>
+
+        <section id="users-section">
+            <h2>Users</h2>
+            <table id="users-table">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Role</th>
+                        <th>Created</th>
+                    </tr>
+                </thead>
+                <tbody id="users-body"></tbody>
+            </table>
+        </section>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>
