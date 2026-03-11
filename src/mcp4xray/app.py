@@ -36,9 +36,15 @@ def create_app() -> FastAPI:
     app = FastAPI(title="mcp4xray", lifespan=lifespan)
     from mcp4xray.routes.auth_routes import router as auth_router
     from mcp4xray.routes.admin_routes import router as admin_router
+    from mcp4xray.routes.config_routes import router as config_router
+    from mcp4xray.routes.chat_routes import router as chat_router
+    from mcp4xray.routes.conversation_routes import router as conv_router
 
     app.include_router(auth_router, prefix="/api")
     app.include_router(admin_router, prefix="/api/admin")
+    app.include_router(config_router, prefix="/api")
+    app.include_router(chat_router, prefix="/api")
+    app.include_router(conv_router, prefix="/api")
 
     static_dir = Path(__file__).parent / "static"
     if static_dir.exists():
