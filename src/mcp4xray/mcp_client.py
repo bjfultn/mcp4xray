@@ -63,10 +63,16 @@ class MCPClient:
         return normalize_tool_result(result)
 
     async def disconnect(self):
-        if self._session_cm:
-            await self._session_cm.__aexit__(None, None, None)
-        if self._client_cm:
-            await self._client_cm.__aexit__(None, None, None)
+        try:
+            if self._session_cm:
+                await self._session_cm.__aexit__(None, None, None)
+        except Exception:
+            pass
+        try:
+            if self._client_cm:
+                await self._client_cm.__aexit__(None, None, None)
+        except Exception:
+            pass
         self.session = None
         self.tools = []
         self.instructions = ""

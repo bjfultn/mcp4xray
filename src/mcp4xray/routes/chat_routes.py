@@ -59,15 +59,15 @@ async def chat(req: ChatRequest, request: Request, user: dict = Depends(require_
 
     async def event_stream():
         mcp = MCPClient(server.url)
-        try:
-            await mcp.connect()
-        except Exception as exc:
-            yield f"data: {json.dumps({'type': 'error', 'content': f'MCP connection failed: {exc}'})}\n\n"
-            yield f"data: {json.dumps({'type': 'done', 'conversation_id': conv_id})}\n\n"
-            return
-
         full_text = ""
         try:
+            try:
+                await mcp.connect()
+            except Exception as exc:
+                yield f"data: {json.dumps({'type': 'error', 'content': f'MCP connection failed: {exc}'})}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'conversation_id': conv_id})}\n\n"
+                return
+
             async for event in run_chat_turn(llm=llm, mcp=mcp, messages=messages):
                 payload = {"type": event.type, "content": event.content}
                 if event.tool_name:
@@ -84,6 +84,9 @@ async def chat(req: ChatRequest, request: Request, user: dict = Depends(require_
                     await db.add_message(conv_id, "tool_call", event.content)
                 elif event.type == "tool_result":
                     await db.add_message(conv_id, "tool_result", event.content)
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'content': str(exc)})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'conversation_id': conv_id})}\n\n"
         finally:
             if full_text:
                 await db.add_message(conv_id, "assistant", full_text)

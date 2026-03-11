@@ -2,7 +2,7 @@
   "servers": [
     {
       "name": "Mock Archive (dev)",
-      "url": "http://127.0.0.1:9000/mcp"
+      "url": "http://mock-mcp:9000/mcp"
     },
     {
       "name": "Chandra",
@@ -14,9 +14,12 @@
     }
   ],
   "models": [
-    {"id": "claude-sonnet-4-20250514", "name": "Claude Sonnet", "provider": "anthropic"},
-    {"id": "gpt-4o", "name": "GPT-4o", "provider": "openai"},
-    {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro", "provider": "gemini"},
+    {"id": "claude-opus-4-6", "name": "Claude Opus 4.6", "provider": "anthropic"},
+    {"id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6", "provider": "anthropic"},
+    {"id": "gpt-5.4", "name": "GPT-5.4", "provider": "openai"},
+    {"id": "gpt-5-mini-2025-08-07", "name": "GPT-5 Mini", "provider": "openai"},
+    {"id": "gemini-3.1-pro", "name": "Gemini 3.1 Pro", "provider": "gemini"},
+    {"id": "gemini-3.1-flash", "name": "Gemini 3.1 Flash", "provider": "gemini"},
     {"id": "qwen3:14b", "name": "Qwen3 14B", "provider": "ollama", "base_url": "http://ogsrotag2423.no-ip.org:11434/v1"}
   ]
 }

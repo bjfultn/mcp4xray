@@ -96,10 +96,19 @@ class Database:
     async def get_all_users(self) -> list[dict]:
         """Return a list of all users (id, username, role, created_at)."""
         cursor = await self._conn.execute(
-            "SELECT id, username, password_hash, role, created_at FROM users ORDER BY id"
+            "SELECT id, username, role, created_at FROM users ORDER BY id"
         )
         rows = await cursor.fetchall()
         return [_row_to_dict(cursor, row) for row in rows]
+
+    async def update_user_role(self, user_id: int, role: str) -> bool:
+        """Update a user's role. Returns True if the user was found and updated."""
+        cursor = await self._conn.execute(
+            "UPDATE users SET role = ? WHERE id = ?",
+            (role, user_id),
+        )
+        await self._conn.commit()
+        return cursor.rowcount > 0
 
     # ------------------------------------------------------------------
     # Invite codes

@@ -8,6 +8,8 @@ mcp = FastMCP(
         "You are a mock X-ray astronomy archive assistant. "
         "You have access to simulated observation data for testing."
     ),
+    host="0.0.0.0",
+    port=9000,
 )
 
 @mcp.tool(name="search_observations", description="Search for X-ray observations by target name or coordinates.")
@@ -37,4 +39,4 @@ def get_observation_details(obsid: str) -> dict[str, Any]:
     }
 
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http", host="127.0.0.1", port=9000)
+    mcp.run(transport="streamable-http")

@@ -1,3 +1,5 @@
+/* mcp4xray Admin Dashboard */
+
 "use strict";
 
 const API_BASE = "/api/admin";
@@ -15,13 +17,11 @@ function authHeaders() {
 }
 
 function formatDate(epoch) {
-    if (!epoch) return "-";
+    if (!epoch) return "--";
     return new Date(epoch * 1000).toLocaleString();
 }
 
-// ---------------------------------------------------------------------------
-// Init
-// ---------------------------------------------------------------------------
+// --- Init ---
 
 function init() {
     const token = getToken();
@@ -30,13 +30,18 @@ function init() {
         window.location.href = "/";
         return;
     }
+
+    document.getElementById("admin-user-name").textContent =
+        localStorage.getItem("username") || "";
+
+    document.getElementById("generate-btn").addEventListener("click", generateInvite);
+    document.getElementById("copy-btn").addEventListener("click", copyToClipboard);
+
     loadInvites();
     loadUsers();
 }
 
-// ---------------------------------------------------------------------------
-// Invites
-// ---------------------------------------------------------------------------
+// --- Invites ---
 
 async function generateInvite() {
     try {
@@ -51,10 +56,8 @@ async function generateInvite() {
         }
         const data = await res.json();
         lastGeneratedCode = data.code;
-        const display = document.getElementById("code-display");
-        display.textContent = data.code;
+        document.getElementById("code-display").textContent = data.code;
         document.getElementById("generated-code").classList.remove("hidden");
-        // Refresh invite list
         loadInvites();
     } catch (e) {
         alert("Error generating invite: " + e.message);
@@ -74,10 +77,10 @@ async function loadInvites() {
             const tr = document.createElement("tr");
             const status = inv.used_by ? "used" : "unused";
             tr.innerHTML =
-                "<td class=\"code-cell\">" + escapeHtml(inv.code) + "</td>" +
-                "<td class=\"status-" + status + "\">" + status + "</td>" +
+                '<td class="code-cell">' + escapeHtml(inv.code) + "</td>" +
+                '<td class="status-' + status + '">' + status + "</td>" +
                 "<td>" + formatDate(inv.created_at) + "</td>" +
-                "<td>" + (inv.used_by != null ? inv.used_by : "-") + "</td>";
+                "<td>" + (inv.used_by != null ? escapeHtml(String(inv.used_by)) : "--") + "</td>";
             tbody.appendChild(tr);
         }
     } catch (e) {
@@ -85,11 +88,10 @@ async function loadInvites() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Users
-// ---------------------------------------------------------------------------
+// --- Users ---
 
 async function loadUsers() {
+    const currentUsername = localStorage.getItem("username") || "";
     try {
         const res = await fetch(API_BASE + "/users", {
             headers: authHeaders(),
@@ -99,11 +101,42 @@ async function loadUsers() {
         const tbody = document.getElementById("users-body");
         tbody.innerHTML = "";
         for (const user of data.users) {
+            const isSelf = user.username === currentUsername;
+            const isAdmin = user.role === "admin";
             const tr = document.createElement("tr");
             tr.innerHTML =
                 "<td>" + escapeHtml(user.username) + "</td>" +
                 "<td>" + escapeHtml(user.role) + "</td>" +
-                "<td>" + formatDate(user.created_at) + "</td>";
+                "<td>" + formatDate(user.created_at) + "</td>" +
+                '<td><label class="admin-toggle">' +
+                    '<input type="checkbox"' + (isAdmin ? " checked" : "") +
+                    (isSelf ? " disabled" : "") +
+                    ' data-user-id="' + user.id + '">' +
+                    '<span class="slider"></span>' +
+                '</label></td>';
+
+            const checkbox = tr.querySelector('input[type="checkbox"]');
+            if (!isSelf) {
+                checkbox.addEventListener("change", async function () {
+                    const userId = this.dataset.userId;
+                    const makeAdmin = this.checked;
+                    try {
+                        const resp = await fetch(API_BASE + "/users/" + userId, {
+                            method: "PATCH",
+                            headers: authHeaders(),
+                            body: JSON.stringify({ is_admin: makeAdmin }),
+                        });
+                        if (!resp.ok) {
+                            this.checked = !makeAdmin;
+                            console.error("Failed to update admin status");
+                        }
+                    } catch (err) {
+                        this.checked = !makeAdmin;
+                        console.error("Failed to update admin status:", err);
+                    }
+                });
+            }
+
             tbody.appendChild(tr);
         }
     } catch (e) {
@@ -111,9 +144,7 @@ async function loadUsers() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Clipboard
-// ---------------------------------------------------------------------------
+// --- Clipboard ---
 
 async function copyToClipboard() {
     const text = lastGeneratedCode;
@@ -125,7 +156,6 @@ async function copyToClipboard() {
         btn.textContent = "Copied!";
         setTimeout(() => { btn.textContent = original; }, 1500);
     } catch (e) {
-        // Fallback for older browsers / non-HTTPS
         const ta = document.createElement("textarea");
         ta.value = text;
         ta.style.position = "fixed";
@@ -141,9 +171,7 @@ async function copyToClipboard() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// --- Helpers ---
 
 function escapeHtml(str) {
     if (str == null) return "";
@@ -152,8 +180,6 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
-// ---------------------------------------------------------------------------
-// Boot
-// ---------------------------------------------------------------------------
+// --- Boot ---
 
 document.addEventListener("DOMContentLoaded", init);

@@ -3,51 +3,71 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Panel - mcp4xray</title>
-    <link rel="stylesheet" href="style.css">
+    <title>mcp4xray Admin</title>
+    <link rel="stylesheet" href="/admin.css">
 </head>
 <body>
-    <div id="admin-container">
-        <header id="admin-header">
-            <h1>Admin Panel</h1>
-            <a href="/" id="back-link">Back to Chat</a>
-        </header>
+    <header class="admin-header">
+        <div class="header-left">
+            <h1 class="header-title">mcp4xray</h1>
+            <span class="header-subtitle">Admin</span>
+        </div>
+        <div class="header-right">
+            <span id="admin-user-name"></span>
+            <a href="/" class="back-link">Back to Chat</a>
+        </div>
+    </header>
 
-        <section id="invite-section">
-            <h2>Invite Codes</h2>
-            <button id="generate-btn" onclick="generateInvite()">Generate Invite Code</button>
-            <div id="generated-code" class="hidden">
-                <span id="code-display"></span>
-                <button id="copy-btn" onclick="copyToClipboard()">Copy</button>
+    <div class="admin-container">
+        <!-- Invite Codes -->
+        <section class="dashboard-section">
+            <div class="section-header">
+                <h2>Invite Codes</h2>
+                <button class="action-btn" id="generate-btn">Generate Invite Code</button>
             </div>
-            <table id="invites-table">
-                <thead>
-                    <tr>
-                        <th>Code</th>
-                        <th>Status</th>
-                        <th>Created</th>
-                        <th>Used By</th>
-                    </tr>
-                </thead>
-                <tbody id="invites-body"></tbody>
-            </table>
+
+            <div id="generated-code" class="generated-code hidden">
+                <span class="generated-code-label">New invite code:</span>
+                <code id="code-display"></code>
+                <button class="action-btn action-btn-small" id="copy-btn">Copy</button>
+            </div>
+
+            <div class="table-scroll">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Used By</th>
+                        </tr>
+                    </thead>
+                    <tbody id="invites-body"></tbody>
+                </table>
+            </div>
         </section>
 
-        <section id="users-section">
-            <h2>Users</h2>
-            <table id="users-table">
-                <thead>
-                    <tr>
-                        <th>Username</th>
-                        <th>Role</th>
-                        <th>Created</th>
-                    </tr>
-                </thead>
-                <tbody id="users-body"></tbody>
-            </table>
+        <!-- Users -->
+        <section class="dashboard-section">
+            <div class="section-header">
+                <h2>Users</h2>
+            </div>
+            <div class="table-scroll">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Role</th>
+                            <th>Created</th>
+                            <th>Admin</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-body"></tbody>
+                </table>
+            </div>
         </section>
     </div>
 
-    <script src="admin.js"></script>
+    <script src="/admin.js"></script>
 </body>
 </html>

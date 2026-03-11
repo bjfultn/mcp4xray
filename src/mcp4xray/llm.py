@@ -135,15 +135,18 @@ class LLMBackend:
     ) -> LLMResponse:
         """Send a chat-completion request and return a unified *LLMResponse*.
 
-        *tools* should already be in the provider's native format (use one of
-        the ``mcp_tools_to_*`` helpers first).
+        *tools* should be in MCP format; they are converted to the provider's
+        native format automatically.
         """
         if self.provider in ("openai", "ollama"):
-            return await self._complete_openai(messages, tools, system_prompt)
+            native_tools = mcp_tools_to_openai(tools) if tools else None
+            return await self._complete_openai(messages, native_tools, system_prompt)
         elif self.provider == "anthropic":
-            return await self._complete_anthropic(messages, tools, system_prompt)
+            native_tools = mcp_tools_to_anthropic(tools) if tools else None
+            return await self._complete_anthropic(messages, native_tools, system_prompt)
         elif self.provider == "gemini":
-            return await self._complete_gemini(messages, tools, system_prompt)
+            native_tools = mcp_tools_to_gemini(tools) if tools else None
+            return await self._complete_gemini(messages, native_tools, system_prompt)
         else:
             raise ValueError(f"Unknown provider: {self.provider!r}")
 

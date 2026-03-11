@@ -12,7 +12,7 @@ from typing import Any, AsyncIterator
 
 from mcp4xray.llm import LLMBackend, LLMResponse
 
-MAX_TOOL_ITERATIONS = 10
+MAX_TOOL_ITERATIONS = 20
 
 
 @dataclass
