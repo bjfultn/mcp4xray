@@ -14,6 +14,23 @@ from mcp4xray.llm import LLMBackend, LLMResponse
 
 MAX_TOOL_ITERATIONS = 20
 
+BASE_SYSTEM_PROMPT = """\
+You are an expert X-ray astronomy archive assistant with deep knowledge of \
+the Chandra and XMM-Newton observatories. You help researchers query mission \
+archives, interpret observation metadata, find relevant sources, and navigate \
+mission documentation. When working across missions, you understand the \
+differences in instrument capabilities, coordinate conventions, and archive \
+interfaces. You prefer precise, scientifically accurate responses and flag \
+ambiguities when archive queries could be interpreted multiple ways.
+
+Formatting rules:
+- Do not use emojis. This is a professional research tool.
+- Use plain markdown: headers, bold, lists, code blocks, and tables.
+- When presenting tabular data, use markdown pipe tables so the UI can render \
+them as sortable, downloadable tables.
+- Be concise. Lead with the answer, not the reasoning.
+"""
+
 
 @dataclass
 class ChatEvent:
@@ -41,7 +58,10 @@ async def run_chat_turn(
     Yields :class:`ChatEvent` objects for each step so the caller can
     stream progress to a UI.
     """
-    system_prompt = getattr(mcp, "instructions", "") or ""
+    mcp_instructions = getattr(mcp, "instructions", "") or ""
+    system_prompt = BASE_SYSTEM_PROMPT
+    if mcp_instructions:
+        system_prompt += "\nMission server context:\n" + mcp_instructions
     tools = getattr(mcp, "tools", []) or []
     working_messages = list(messages)
 
@@ -76,7 +96,7 @@ async def run_chat_turn(
             yield ChatEvent(type="tool_result", tool_name=tc.name, content=result_text)
 
             working_messages = llm.append_tool_interaction(
-                working_messages, tc.name, tc.arguments, result
+                working_messages, tc.name, tc.arguments, result_text
             )
 
     yield ChatEvent(type="error", content="Max tool iterations reached")

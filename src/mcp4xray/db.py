@@ -39,6 +39,14 @@ CREATE TABLE IF NOT EXISTS messages (
     content TEXT NOT NULL,
     timestamp REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS user_api_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    provider TEXT NOT NULL,
+    api_key TEXT NOT NULL,
+    updated_at REAL NOT NULL,
+    UNIQUE(user_id, provider)
+);
 """
 
 
@@ -60,6 +68,13 @@ class Database:
         # Enable foreign keys
         await self._conn.execute("PRAGMA foreign_keys = ON")
         await self._conn.executescript(_SCHEMA)
+        # Migrate: add base_url column if missing
+        cursor = await self._conn.execute("PRAGMA table_info(user_api_keys)")
+        cols = {row[1] for row in await cursor.fetchall()}
+        if "base_url" not in cols:
+            await self._conn.execute(
+                "ALTER TABLE user_api_keys ADD COLUMN base_url TEXT NOT NULL DEFAULT ''"
+            )
         await self._conn.commit()
 
     async def close(self) -> None:
@@ -236,3 +251,49 @@ class Database:
         )
         rows = await cursor.fetchall()
         return [_row_to_dict(cursor, row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # User API keys
+    # ------------------------------------------------------------------
+
+    async def set_user_api_key(
+        self, user_id: int, provider: str, api_key: str, base_url: str = "",
+    ) -> None:
+        """Set or update an API key (and optional base_url) for a user/provider."""
+        now = time.time()
+        await self._conn.execute(
+            "INSERT INTO user_api_keys (user_id, provider, api_key, base_url, updated_at) "
+            "VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(user_id, provider) DO UPDATE SET api_key = ?, base_url = ?, updated_at = ?",
+            (user_id, provider, api_key, base_url, now, api_key, base_url, now),
+        )
+        await self._conn.commit()
+
+    async def delete_user_api_key(self, user_id: int, provider: str) -> bool:
+        """Remove a user's API key for a provider. Returns True if deleted."""
+        cursor = await self._conn.execute(
+            "DELETE FROM user_api_keys WHERE user_id = ? AND provider = ?",
+            (user_id, provider),
+        )
+        await self._conn.commit()
+        return cursor.rowcount > 0
+
+    async def get_user_api_keys(self, user_id: int) -> list[dict]:
+        """Return a list of {provider, api_key, base_url} dicts for a user."""
+        cursor = await self._conn.execute(
+            "SELECT provider, api_key, base_url FROM user_api_keys WHERE user_id = ?",
+            (user_id,),
+        )
+        rows = await cursor.fetchall()
+        return [{"provider": r[0], "api_key": r[1], "base_url": r[2] or ""} for r in rows]
+
+    async def get_user_provider_settings(self, user_id: int, provider: str) -> dict | None:
+        """Return {api_key, base_url} for a user/provider, or None."""
+        cursor = await self._conn.execute(
+            "SELECT api_key, base_url FROM user_api_keys WHERE user_id = ? AND provider = ?",
+            (user_id, provider),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return {"api_key": row[0], "base_url": row[1] or ""}

@@ -86,6 +86,18 @@ function setupEventListeners() {
     document.getElementById('server-info-modal').addEventListener('click', (e) => {
         if (e.target.classList.contains('modal-overlay')) closeModal();
     });
+    document.getElementById('settings-btn').addEventListener('click', openSettings);
+    document.getElementById('settings-modal-close').addEventListener('click', closeSettings);
+    document.getElementById('settings-modal').addEventListener('click', (e) => {
+        if (e.target.classList.contains('modal-overlay')) closeSettings();
+    });
+    document.getElementById('save-keys-btn').addEventListener('click', saveApiKeys);
+    for (const btn of document.querySelectorAll('.key-toggle')) {
+        btn.addEventListener('click', () => toggleKeyVisibility(btn.dataset.target));
+    }
+    for (const btn of document.querySelectorAll('.key-clear')) {
+        btn.addEventListener('click', () => clearApiKey(btn.dataset.provider));
+    }
     sidebarToggle.addEventListener('click', () => {
         sidebar.classList.toggle('collapsed');
         localStorage.setItem('mcp4xray-sidebar-collapsed', sidebar.classList.contains('collapsed'));
@@ -324,6 +336,7 @@ function appendAssistantMessage(content) {
         '<div class="message-role">Assistant</div>' +
         '<div class="message-content">' + renderMarkdown(content) + '</div>';
     messagesEl.appendChild(msg);
+    hydratePendingTables(msg);
     scrollToBottom();
 }
 
@@ -487,6 +500,7 @@ async function sendMessage() {
                         const block = ensureTextBlock();
                         block._rawText += event.content;
                         block.innerHTML = renderMarkdown(block._rawText);
+                        hydratePendingTables(block);
                         scrollToBottom();
                         break;
                     }
@@ -547,6 +561,7 @@ async function sendMessage() {
                         setupToggle(resultBlock, '.tool-block-result', '.tool-block-toggle', 'Show result', 'Hide result');
                         ensureTurn().appendChild(resultBlock);
                         textBlockEl = null;
+                        showLoadingIndicator();
                         scrollToBottom();
                         break;
                     }
@@ -692,7 +707,151 @@ function removeLoadingIndicator() {
     if (el) el.remove();
 }
 
+// --- Sortable data table builder (ported from TAPchat) ---
+
+function buildSortableTable(columns, rows) {
+    const sortedRows = rows.slice();
+    let sortCol = -1;
+    let sortAsc = true;
+
+    const container = document.createElement('div');
+    container.className = 'table-container';
+
+    // Header with download button
+    const header = document.createElement('div');
+    header.className = 'table-header';
+    const downloadBtn = document.createElement('button');
+    downloadBtn.className = 'table-download-btn';
+    downloadBtn.textContent = 'Download CSV';
+    downloadBtn.addEventListener('click', () => downloadCSV(columns, sortedRows));
+    header.appendChild(downloadBtn);
+    container.appendChild(header);
+
+    // Scrollable table
+    const scrollDiv = document.createElement('div');
+    scrollDiv.className = 'table-scroll';
+
+    const table = document.createElement('table');
+    table.className = 'data-table';
+
+    // thead with sortable columns
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    const thElements = [];
+    for (let i = 0; i < columns.length; i++) {
+        const th = document.createElement('th');
+        th.className = 'sortable';
+        th.textContent = columns[i];
+        th.addEventListener('click', () => onSort(i));
+        headRow.appendChild(th);
+        thElements.push(th);
+    }
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+    scrollDiv.appendChild(table);
+    container.appendChild(scrollDiv);
+
+    function fillBody() {
+        tbody.innerHTML = '';
+        for (const row of sortedRows) {
+            const tr = document.createElement('tr');
+            for (const val of row) {
+                const td = document.createElement('td');
+                const s = val == null ? '' : String(val);
+                // Detect links
+                const m = s.match(/^https?:\/\/\S+$/);
+                if (m) {
+                    const a = document.createElement('a');
+                    a.href = s;
+                    a.textContent = s.length > 60 ? s.slice(0, 57) + '...' : s;
+                    a.target = '_blank';
+                    a.rel = 'noopener';
+                    td.appendChild(a);
+                } else {
+                    td.textContent = s;
+                }
+                tr.appendChild(td);
+            }
+            tbody.appendChild(tr);
+        }
+    }
+
+    function onSort(colIdx) {
+        if (sortCol === colIdx) {
+            sortAsc = !sortAsc;
+        } else {
+            sortCol = colIdx;
+            sortAsc = true;
+        }
+        sortedRows.sort((a, b) => {
+            const va = a[colIdx], vb = b[colIdx];
+            if (va == null && vb == null) return 0;
+            if (va == null) return 1;
+            if (vb == null) return -1;
+            // Try numeric comparison
+            const na = Number(va), nb = Number(vb);
+            if (!isNaN(na) && !isNaN(nb)) {
+                return sortAsc ? na - nb : nb - na;
+            }
+            const sa = String(va), sb = String(vb);
+            return sortAsc ? sa.localeCompare(sb) : sb.localeCompare(sa);
+        });
+        for (let i = 0; i < thElements.length; i++) {
+            thElements[i].className = i === colIdx
+                ? 'sortable ' + (sortAsc ? 'sort-asc' : 'sort-desc')
+                : 'sortable';
+        }
+        fillBody();
+    }
+
+    fillBody();
+    return container;
+}
+
+function downloadCSV(columns, rows) {
+    const esc = (v) => {
+        if (v == null) return '';
+        const s = String(v);
+        return s.includes(',') || s.includes('"') || s.includes('\n')
+            ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const lines = [columns.map(esc).join(',')];
+    for (const row of rows) { lines.push(row.map(esc).join(',')); }
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'mcp4xray_table.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// Parse a markdown table block into {columns, rows} for buildSortableTable
+function parseMarkdownTable(block) {
+    const lines = block.trim().split('\n').filter(l => l.trim());
+    if (lines.length < 2) return null;
+    const parseRow = (line) => line.split('|').slice(1, -1).map(c => c.trim());
+    const columns = parseRow(lines[0]);
+    if (columns.length === 0) return null;
+    const isSep = /^\|[\s\-:]+(\|[\s\-:]+)+\|?\s*$/.test(lines[1]);
+    const dataStart = isSep ? 2 : 1;
+    const rows = [];
+    for (let i = dataStart; i < lines.length; i++) {
+        rows.push(parseRow(lines[i]));
+    }
+    return { columns, rows };
+}
+
 // --- Markdown renderer ---
+
+// Marker for deferred table rendering
+let _tableCounter = 0;
+const _pendingTables = {};
 
 function renderMarkdown(text) {
     if (!text) return '';
@@ -718,28 +877,17 @@ function renderMarkdown(text) {
     // Links
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
 
-    // Markdown tables
+    // Markdown tables → placeholder divs for sortable table injection
     html = html.replace(
         /((?:^\|.+\|[ \t]*$\n?){2,})/gm,
         (block) => {
-            const lines = block.trim().split('\n').filter(l => l.trim());
-            if (lines.length < 2) return block;
-            const parseRow = (line) =>
-                line.split('|').slice(1, -1).map(c => c.trim());
-            const headers = parseRow(lines[0]);
-            const isSep = /^\|[\s\-:]+(\|[\s\-:]+)+\|?\s*$/.test(lines[1]);
-            const dataStart = isSep ? 2 : 1;
-            let tbl = '<div style="overflow-x:auto;margin:12px 0"><table><thead><tr>';
-            for (const h of headers) tbl += '<th>' + h + '</th>';
-            tbl += '</tr></thead><tbody>';
-            for (let i = dataStart; i < lines.length; i++) {
-                const cells = parseRow(lines[i]);
-                tbl += '<tr>';
-                for (const c of cells) tbl += '<td>' + c + '</td>';
-                tbl += '</tr>';
-            }
-            tbl += '</tbody></table></div>';
-            return tbl;
+            // Unescape the block so parseMarkdownTable sees raw pipes
+            const raw = block.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+            const parsed = parseMarkdownTable(raw);
+            if (!parsed) return block;
+            const id = 'md-table-' + (++_tableCounter);
+            _pendingTables[id] = parsed;
+            return '<div id="' + id + '"></div>';
         }
     );
 
@@ -756,6 +904,19 @@ function renderMarkdown(text) {
     html = html.replace(/(?<!<\/pre>)\n(?!<)/g, '<br>');
 
     return html;
+}
+
+// Replace pending table placeholders with sortable table DOM elements.
+// Call this after setting innerHTML with renderMarkdown() output.
+function hydratePendingTables(container) {
+    for (const [id, parsed] of Object.entries(_pendingTables)) {
+        const placeholder = container.querySelector('#' + id);
+        if (placeholder) {
+            const tableEl = buildSortableTable(parsed.columns, parsed.rows);
+            placeholder.replaceWith(tableEl);
+        }
+        delete _pendingTables[id];
+    }
 }
 
 // --- Sidebar resize ---
@@ -842,6 +1003,148 @@ function showAdminLink() {
             header.parentElement.insertBefore(link, sidebarToggle);
         }
     }
+}
+
+// --- Settings Modal (API Keys) ---
+
+async function openSettings() {
+    const modal = document.getElementById('settings-modal');
+    modal.classList.remove('hidden');
+
+    // Clear inputs
+    for (const input of modal.querySelectorAll('input[data-provider]')) {
+        input.value = '';
+    }
+    document.getElementById('key-ollama-url').value = '';
+
+    // Load current masked keys
+    try {
+        const res = await fetch('/api/settings/api-keys', { headers: authHeaders() });
+        if (res.status === 401) { logout(); return; }
+        if (!res.ok) return;
+        const data = await res.json();
+        const keys = data.keys || {};
+
+        for (const [provider, info] of Object.entries(keys)) {
+            const status = document.getElementById('status-' + provider);
+            if (status && info.masked_key) {
+                status.textContent = 'Current: ' + info.masked_key;
+                status.className = 'key-status has-key';
+            }
+            // Show saved ollama base_url
+            if (provider === 'ollama' && info.base_url) {
+                document.getElementById('key-ollama-url').value = info.base_url;
+                if (status && !info.masked_key) {
+                    status.textContent = 'Custom base URL set';
+                    status.className = 'key-status has-key';
+                }
+            }
+        }
+        // Clear status for providers without keys
+        for (const p of ['anthropic', 'openai', 'gemini', 'ollama']) {
+            if (!keys[p]) {
+                const status = document.getElementById('status-' + p);
+                if (status) {
+                    status.textContent = 'Using server default';
+                    status.className = 'key-status';
+                }
+            }
+        }
+    } catch (err) {
+        console.error('Failed to load API keys:', err);
+    }
+}
+
+function closeSettings() {
+    document.getElementById('settings-modal').classList.add('hidden');
+}
+
+async function saveApiKeys() {
+    const btn = document.getElementById('save-keys-btn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    const inputs = document.querySelectorAll('#settings-modal input[data-provider]');
+    let saved = 0;
+
+    for (const input of inputs) {
+        const provider = input.dataset.provider;
+        const value = input.value.trim();
+        if (!value) continue;
+
+        try {
+            const res = await fetch('/api/settings/api-keys', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({ provider, api_key: value }),
+            });
+            if (res.ok) {
+                saved++;
+                input.value = '';
+                const status = document.getElementById('status-' + provider);
+                if (status) {
+                    status.textContent = 'Saved';
+                    status.className = 'key-status saved';
+                }
+            }
+        } catch (err) {
+            console.error('Failed to save key for ' + provider + ':', err);
+        }
+    }
+
+    // Save ollama base_url
+    const ollamaUrl = document.getElementById('key-ollama-url').value.trim();
+    if (ollamaUrl) {
+        try {
+            const res = await fetch('/api/settings/api-keys', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                body: JSON.stringify({ provider: 'ollama', base_url: ollamaUrl }),
+            });
+            if (res.ok) {
+                saved++;
+                const status = document.getElementById('status-ollama');
+                if (status) {
+                    status.textContent = 'Saved';
+                    status.className = 'key-status saved';
+                }
+            }
+        } catch (err) {
+            console.error('Failed to save ollama base URL:', err);
+        }
+    }
+
+    btn.disabled = false;
+    btn.textContent = saved > 0 ? 'Saved!' : 'Save Keys';
+    if (saved > 0) {
+        setTimeout(() => { btn.textContent = 'Save Keys'; }, 1500);
+    }
+}
+
+async function clearApiKey(provider) {
+    try {
+        const res = await fetch('/api/settings/api-keys/' + provider, {
+            method: 'DELETE',
+            headers: authHeaders(),
+        });
+        if (res.ok) {
+            const status = document.getElementById('status-' + provider);
+            if (status) {
+                status.textContent = 'Using server default';
+                status.className = 'key-status';
+            }
+            const input = document.getElementById('key-' + provider);
+            if (input) input.value = '';
+        }
+    } catch (err) {
+        console.error('Failed to clear key:', err);
+    }
+}
+
+function toggleKeyVisibility(targetId) {
+    const input = document.getElementById(targetId);
+    if (!input) return;
+    input.type = input.type === 'password' ? 'text' : 'password';
 }
 
 // --- Server Info Modal ---

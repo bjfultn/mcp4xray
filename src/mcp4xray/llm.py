@@ -30,6 +30,17 @@ _PROVIDER_DEFAULTS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
+def _clean_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Strip fields from an MCP inputSchema that LLM providers reject."""
+    cleaned = {k: v for k, v in schema.items() if k != "title"}
+    if "properties" in cleaned:
+        cleaned["properties"] = {
+            k: {pk: pv for pk, pv in v.items() if pk != "title"}
+            for k, v in cleaned["properties"].items()
+        }
+    return cleaned
+
+
 def mcp_tools_to_openai(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Convert MCP tool definitions to OpenAI's native function-calling format.
 
@@ -43,7 +54,7 @@ def mcp_tools_to_openai(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "function": {
                     "name": tool["name"],
                     "description": tool.get("description", ""),
-                    "parameters": tool["inputSchema"],
+                    "parameters": _clean_schema(tool["inputSchema"]),
                 },
             }
         )
@@ -61,7 +72,7 @@ def mcp_tools_to_anthropic(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
             {
                 "name": tool["name"],
                 "description": tool.get("description", ""),
-                "input_schema": tool["inputSchema"],
+                "input_schema": _clean_schema(tool["inputSchema"]),
             }
         )
     return result
@@ -78,7 +89,7 @@ def mcp_tools_to_gemini(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
             {
                 "name": tool["name"],
                 "description": tool.get("description", ""),
-                "parameters": tool["inputSchema"],
+                "parameters": _clean_schema(tool["inputSchema"]),
             }
         )
     return result
@@ -202,7 +213,11 @@ class LLMBackend:
                 headers=headers,
                 timeout=120.0,
             )
-            resp.raise_for_status()
+            if not resp.is_success:
+                detail = resp.text[:500]
+                raise RuntimeError(
+                    f"{self.provider} API error {resp.status_code}: {detail}"
+                )
             data = resp.json()
 
         choice = data["choices"][0]
@@ -283,7 +298,11 @@ class LLMBackend:
                 headers=headers,
                 timeout=120.0,
             )
-            resp.raise_for_status()
+            if not resp.is_success:
+                detail = resp.text[:500]
+                raise RuntimeError(
+                    f"Anthropic API error {resp.status_code}: {detail}"
+                )
             data = resp.json()
 
         text_parts: list[str] = []
@@ -369,7 +388,11 @@ class LLMBackend:
                 headers={"Content-Type": "application/json"},
                 timeout=120.0,
             )
-            resp.raise_for_status()
+            if not resp.is_success:
+                detail = resp.text[:500]
+                raise RuntimeError(
+                    f"Gemini API error {resp.status_code}: {detail}"
+                )
             data = resp.json()
 
         text_parts: list[str] = []

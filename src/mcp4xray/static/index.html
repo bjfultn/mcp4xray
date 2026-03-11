@@ -18,7 +18,10 @@
             <div id="auth-section">
                 <div class="user-info">
                     <span id="user-name"></span>
-                    <button class="btn-link" id="logout-btn">Sign out</button>
+                    <div class="user-actions">
+                        <button class="btn-link" id="settings-btn" title="API Key Settings">Settings</button>
+                        <button class="btn-link" id="logout-btn">Sign out</button>
+                    </div>
                 </div>
             </div>
 
@@ -59,6 +62,57 @@
                 AI assistants can make mistakes. Please verify results against official archive data.
             </div>
         </main>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal-overlay hidden">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>API Key Settings</h2>
+                <button class="modal-close" id="settings-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="settings-desc">Add your own API keys to use instead of the server defaults. Leave blank to use the server key.</p>
+                <div class="settings-form">
+                    <div class="settings-field">
+                        <label for="key-anthropic">Anthropic</label>
+                        <div class="key-input-row">
+                            <input type="password" id="key-anthropic" data-provider="anthropic" placeholder="sk-ant-..." autocomplete="off">
+                            <button class="key-toggle" data-target="key-anthropic" title="Show/hide" class="key-toggle-eye">&#9673;</button>
+                            <button class="key-clear" data-provider="anthropic" title="Clear">&times;</button>
+                        </div>
+                        <div class="key-status" id="status-anthropic"></div>
+                    </div>
+                    <div class="settings-field">
+                        <label for="key-openai">OpenAI</label>
+                        <div class="key-input-row">
+                            <input type="password" id="key-openai" data-provider="openai" placeholder="sk-..." autocomplete="off">
+                            <button class="key-toggle" data-target="key-openai" title="Show/hide" class="key-toggle-eye">&#9673;</button>
+                            <button class="key-clear" data-provider="openai" title="Clear">&times;</button>
+                        </div>
+                        <div class="key-status" id="status-openai"></div>
+                    </div>
+                    <div class="settings-field">
+                        <label for="key-gemini">Google Gemini</label>
+                        <div class="key-input-row">
+                            <input type="password" id="key-gemini" data-provider="gemini" placeholder="AI..." autocomplete="off">
+                            <button class="key-toggle" data-target="key-gemini" title="Show/hide" class="key-toggle-eye">&#9673;</button>
+                            <button class="key-clear" data-provider="gemini" title="Clear">&times;</button>
+                        </div>
+                        <div class="key-status" id="status-gemini"></div>
+                    </div>
+                    <div class="settings-field">
+                        <label for="key-ollama-url">Ollama Base URL</label>
+                        <div class="key-input-row">
+                            <input type="text" id="key-ollama-url" placeholder="http://your-server:11434/v1" autocomplete="off">
+                            <button class="key-clear" data-provider="ollama" title="Clear">&times;</button>
+                        </div>
+                        <div class="key-status" id="status-ollama"></div>
+                    </div>
+                </div>
+                <button class="btn btn-primary" id="save-keys-btn" style="margin:16px 0 0 0;width:100%">Save Keys</button>
+            </div>
+        </div>
     </div>
 
     <!-- Server Info Modal -->

@@ -35,14 +35,23 @@ async def chat(req: ChatRequest, request: Request, user: dict = Depends(require_
     if not model_entry:
         raise HTTPException(status_code=400, detail=f"Unknown model: {req.model_id}")
 
-    api_key_map = {
-        "anthropic": app_config.anthropic_api_key,
-        "openai": app_config.openai_api_key,
-        "gemini": app_config.gemini_api_key,
-        "ollama": "",
-    }
-    api_key = api_key_map.get(model_entry.provider, "")
-    base_url = getattr(model_entry, "base_url", "") or ""
+    # User settings override server-level keys and base_url
+    user_settings = await db.get_user_provider_settings(user["user_id"], model_entry.provider)
+    if user_settings and user_settings["api_key"]:
+        api_key = user_settings["api_key"]
+    else:
+        api_key_map = {
+            "anthropic": app_config.anthropic_api_key,
+            "openai": app_config.openai_api_key,
+            "gemini": app_config.gemini_api_key,
+            "ollama": "",
+        }
+        api_key = api_key_map.get(model_entry.provider, "")
+
+    if user_settings and user_settings["base_url"]:
+        base_url = user_settings["base_url"]
+    else:
+        base_url = getattr(model_entry, "base_url", "") or ""
 
     if req.conversation_id:
         conv_id = req.conversation_id

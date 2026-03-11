@@ -1,12 +1,12 @@
 {
   "servers": [
     {
-      "name": "Mock Archive (dev)",
-      "url": "http://mock-mcp:9000/mcp"
+      "name": "Chandra",
+      "url": "http://host.docker.internal:8001/mcp"
     },
     {
-      "name": "Chandra",
-      "url": "https://chandra-mcp.example.com/mcp"
+      "name": "Mock Archive (dev)",
+      "url": "http://localhost:9000/mcp"
     },
     {
       "name": "XMM-Newton",
