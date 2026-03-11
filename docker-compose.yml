@@ -1,0 +1,23 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./servers.json:/app/servers.json:ro
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=sqlite:///./data/mcp4xray.db
+    restart: unless-stopped
+
+  mock-mcp:
+    build: .
+    command: python /app/dev/mock_server.py
+    ports:
+      - "9000:9000"
+    profiles:
+      - dev
+    volumes:
+      - ./dev:/app/dev:ro
