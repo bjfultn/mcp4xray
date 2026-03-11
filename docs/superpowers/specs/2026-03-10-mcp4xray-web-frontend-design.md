@@ -103,3 +103,5 @@ Adding a new mission requires only a config file entry, no code changes.
 - System prompt owned by MCP server, not hardcoded in client
 - Server-side API keys only; users never handle keys
 - SQLite to start; schema simple enough to swap to Postgres later if needed
+- Containerized with Docker Compose; `docker compose up` runs the app
+- Python 3.12+

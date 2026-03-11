@@ -6,7 +6,7 @@
 
 **Architecture:** FastAPI backend serves a vanilla HTML/JS frontend. The backend connects to one remote MCP server at a time (streamable-http transport), discovers tools dynamically, and runs an agentic loop (LLM → tool call → tool result → LLM) streaming each step to the browser via SSE. SQLite stores users, invite codes, and chat history. JWT handles auth.
 
-**Tech Stack:** Python 3.11+, FastAPI, uvicorn, httpx, mcp (Python SDK), PyJWT, bcrypt, aiosqlite, SQLite
+**Tech Stack:** Python 3.12+, FastAPI, uvicorn, httpx, mcp (Python SDK), PyJWT, bcrypt, aiosqlite, SQLite, Docker Compose
 
 ---
 
@@ -15,6 +15,9 @@
 ```
 mcp4xray/
 ├── pyproject.toml
+├── Dockerfile
+├── docker-compose.yml
+├── .dockerignore
 ├── servers.json                     # MCP server registry
 ├── .env.example                     # Template for env vars
 ├── src/
@@ -79,7 +82,7 @@ Each source file has one clear responsibility. The `routes/` package keeps endpo
 [project]
 name = "mcp4xray"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
@@ -2078,7 +2081,100 @@ git commit -m "feat: mock MCP server for end-to-end development testing"
 
 ---
 
-### Task 14: Run all tests and final cleanup
+### Task 14: Docker Compose containerization
+
+**Files:**
+- Create: `Dockerfile`
+- Create: `docker-compose.yml`
+- Create: `.dockerignore`
+
+- [ ] **Step 1: Create `Dockerfile`**
+
+```dockerfile
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY pyproject.toml .
+RUN pip install --no-cache-dir .
+
+COPY src/ src/
+COPY servers.json .
+
+EXPOSE 8000
+
+CMD ["python", "-m", "mcp4xray.main"]
+```
+
+- [ ] **Step 2: Create `docker-compose.yml`**
+
+```yaml
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./servers.json:/app/servers.json:ro
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=sqlite:///./data/mcp4xray.db
+    restart: unless-stopped
+
+  # Optional: mock MCP server for development
+  mock-mcp:
+    build: .
+    command: python /app/dev/mock_server.py
+    ports:
+      - "9000:9000"
+    profiles:
+      - dev
+    volumes:
+      - ./dev:/app/dev:ro
+```
+
+- [ ] **Step 3: Create `.dockerignore`**
+
+```
+__pycache__
+*.pyc
+.git
+.env
+data/
+laiss_hack/
+tests/
+docs/
+*.egg-info
+.pytest_cache
+```
+
+- [ ] **Step 4: Update `src/mcp4xray/main.py` to bind to 0.0.0.0**
+
+Verify `main.py` uses `host="0.0.0.0"` (already set in Task 1).
+
+- [ ] **Step 5: Test Docker build and run**
+
+Run: `docker compose build`
+Expected: Image builds successfully
+
+Run: `docker compose up`
+Expected: App starts on port 8000, accessible at http://localhost:8000
+
+Run (with mock server): `docker compose --profile dev up`
+Expected: Both app and mock MCP server start
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add Dockerfile docker-compose.yml .dockerignore
+git commit -m "feat: add Docker Compose for containerized deployment"
+```
+
+---
+
+### Task 15: Run all tests and final cleanup
 
 - [ ] **Step 1: Run full test suite**
 
@@ -2090,7 +2186,12 @@ Expected: All tests pass
 Run: `python -m mcp4xray.main`
 Expected: Uvicorn starts on port 8000, no errors
 
-- [ ] **Step 3: Final commit**
+- [ ] **Step 3: Verify Docker build**
+
+Run: `docker compose build`
+Expected: Builds without errors
+
+- [ ] **Step 4: Final commit**
 
 ```bash
 git add -A
