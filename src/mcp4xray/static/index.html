@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mcp4xray - X-ray Astronomy Archive Assistant</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Left sidebar: conversation list -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <h2>Conversations</h2>
+        <button class="btn btn-primary" id="new-chat-btn" title="New Chat">+ New Chat</button>
+      </div>
+      <div class="conversation-list" id="conversation-list">
+        <!-- Populated by JS -->
+      </div>
+    </aside>
+
+    <!-- Main content area -->
+    <main class="main-area">
+      <!-- Top bar -->
+      <header class="top-bar">
+        <div class="top-bar-left">
+          <label for="server-select">Mission:</label>
+          <select id="server-select" class="dropdown"></select>
+
+          <label for="model-select">Model:</label>
+          <select id="model-select" class="dropdown"></select>
+        </div>
+        <div class="top-bar-right">
+          <span class="username-display" id="username-display"></span>
+          <a href="/admin.html" class="btn btn-secondary" id="admin-link" style="display:none;">Admin</a>
+          <button class="btn btn-secondary" id="logout-btn">Logout</button>
+        </div>
+      </header>
+
+      <!-- Message area -->
+      <div class="message-area" id="message-area">
+        <div class="messages" id="messages">
+          <!-- Messages rendered here -->
+          <div class="empty-state" id="empty-state">
+            <p>Select a conversation or start a new chat.</p>
+            <p>Choose a mission server and model above, then type your question below.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input area -->
+      <div class="input-area">
+        <form id="chat-form" class="chat-form">
+          <textarea
+            id="message-input"
+            class="message-input"
+            placeholder="Ask about X-ray observations, sources, or archives..."
+            rows="2"
+          ></textarea>
+          <button type="submit" class="btn btn-primary send-btn" id="send-btn">Send</button>
+        </form>
+      </div>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
