@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>mcp4xray - Sign In</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="auth-container">
+        <!-- Login Section -->
+        <div id="login-section" class="auth-box">
+            <h1>mcp4xray</h1>
+            <p class="subtitle">X-ray Astronomy Archive Assistant</p>
+
+            <div id="login-error" class="error-message"></div>
+
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="login-username">Username</label>
+                    <input type="text" id="login-username" name="username" autocomplete="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" name="password" autocomplete="current-password" required>
+                </div>
+                <button type="submit">Sign In</button>
+            </form>
+
+            <p class="toggle-link">
+                Need an account? <a href="#" id="show-register">Register with invite code</a>
+            </p>
+        </div>
+
+        <!-- Register Section -->
+        <div id="register-section" class="auth-box hidden">
+            <h1>Create Account</h1>
+            <p class="subtitle">Enter your invite code to register</p>
+
+            <div id="register-error" class="error-message"></div>
+
+            <form id="register-form">
+                <div class="form-group">
+                    <label for="register-username">Username</label>
+                    <input type="text" id="register-username" name="username" autocomplete="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-password">Password</label>
+                    <input type="password" id="register-password" name="password" autocomplete="new-password" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-invite">Invite Code</label>
+                    <input type="text" id="register-invite" name="invite_code" autocomplete="off" required>
+                </div>
+                <button type="submit">Create Account</button>
+            </form>
+
+            <p class="toggle-link">
+                Already have an account? <a href="#" id="show-login">Sign in</a>
+            </p>
+        </div>
+    </div>
+
+    <script src="/auth.js"></script>
+</body>
+</html>
