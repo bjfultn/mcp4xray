@@ -104,6 +104,22 @@ class Database:
             await self._conn.execute(
                 "ALTER TABLE user_api_keys ADD COLUMN base_url TEXT NOT NULL DEFAULT ''"
             )
+        # Migrate: re-encrypt any plaintext API keys
+        if self._fernet:
+            cursor = await self._conn.execute(
+                "SELECT id, api_key FROM user_api_keys WHERE api_key != ''"
+            )
+            for row in await cursor.fetchall():
+                row_id, stored_key = row[0], row[1]
+                try:
+                    self._fernet.decrypt(stored_key.encode())
+                except Exception:
+                    # Not valid Fernet — re-encrypt the plaintext key
+                    encrypted = self._encrypt(stored_key)
+                    await self._conn.execute(
+                        "UPDATE user_api_keys SET api_key = ? WHERE id = ?",
+                        (encrypted, row_id),
+                    )
         await self._conn.commit()
 
     async def close(self) -> None:
