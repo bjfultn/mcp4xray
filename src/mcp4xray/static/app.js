@@ -4,6 +4,8 @@
 let currentConversationId = null;
 let isStreaming = false;
 let currentAbortController = null;
+const modelNames = {}; // id -> display name
+let _lastTableResult = null; // full tabular tool result for CSV download
 
 // --- DOM refs ---
 const messagesEl = document.getElementById('messages');
@@ -65,7 +67,21 @@ async function init() {
     showAdminLink();
     setupEventListeners();
     await Promise.all([fetchConfig(), loadConversations()]);
+
+    // Load conversation from URL hash if present
+    const hashMatch = window.location.hash.match(/^#chat\/(\d+)$/);
+    if (hashMatch) {
+        loadConversation(Number(hashMatch[1]));
+    }
 }
+
+window.addEventListener('hashchange', () => {
+    const m = window.location.hash.match(/^#chat\/(\d+)$/);
+    if (m) {
+        const id = Number(m[1]);
+        if (id !== currentConversationId) loadConversation(id);
+    }
+});
 
 function setupEventListeners() {
     sendBtn.onclick = sendMessage;
@@ -147,6 +163,7 @@ async function fetchConfig() {
         };
         const grouped = {};
         for (const m of (data.models || [])) {
+            modelNames[m.id] = m.name || m.id;
             const p = m.provider || 'other';
             if (!grouped[p]) grouped[p] = [];
             grouped[p].push(m);
@@ -193,7 +210,7 @@ function renderConversationList(conversations) {
         item.className = 'chat-item' + (conv.id === currentConversationId ? ' active' : '');
         item.dataset.id = conv.id;
 
-        const title = conv.title || conv.server_name + ' / ' + conv.model;
+        const title = conv.title || conv.server_name + ' / ' + (modelNames[conv.model] || conv.model);
         const date = new Date(conv.updated_at * 1000);
         const dateStr = formatDate(date);
 
@@ -217,6 +234,7 @@ function renderConversationList(conversations) {
 
 async function loadConversation(id) {
     currentConversationId = id;
+    history.replaceState(null, '', '#chat/' + id);
 
     document.querySelectorAll('.chat-item').forEach(el => {
         el.classList.toggle('active', Number(el.dataset.id) === id);
@@ -257,11 +275,31 @@ async function deleteConversation(id) {
 
 function newChat() {
     currentConversationId = null;
+    history.replaceState(null, '', window.location.pathname);
     clearMessages();
     document.querySelectorAll('.chat-item').forEach(el => {
         el.classList.remove('active');
     });
     userInput.focus();
+}
+
+async function generateTitle(convId) {
+    try {
+        const res = await fetch('/api/conversations/' + convId + '/generate-title', {
+            method: 'POST',
+            headers: authHeaders(),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.title) {
+            // Update sidebar item
+            const item = chatList.querySelector('[data-id="' + convId + '"]');
+            if (item) {
+                const titleEl = item.querySelector('.chat-item-title');
+                if (titleEl) titleEl.textContent = data.title;
+            }
+        }
+    } catch {}
 }
 
 // --- Message rendering ---
@@ -367,8 +405,21 @@ function appendSavedToolCall(content) {
 
 function appendSavedToolResult(content) {
     hideEmptyState();
-    let prettyContent;
-    try { prettyContent = JSON.stringify(JSON.parse(content), null, 2); } catch { prettyContent = content; }
+
+    let parsed = null;
+    try { parsed = JSON.parse(content); } catch {}
+
+    // Detect tabular data in the stored result
+    let tableData = null;
+    if (parsed && !parsed.is_error && Array.isArray(parsed.content)
+        && parsed.content.length > 0 && parsed.content[0].type === 'text') {
+        try {
+            const inner = JSON.parse(parsed.content[0].text);
+            if (Array.isArray(inner.columns) && Array.isArray(inner.rows)) {
+                tableData = inner;
+            }
+        } catch {}
+    }
 
     const toolBlock = document.createElement('div');
     toolBlock.className = 'tool-block complete';
@@ -376,15 +427,39 @@ function appendSavedToolResult(content) {
     toolBlock.style.margin = '6px auto';
     toolBlock.style.borderColor = 'rgba(78, 204, 163, 0.15)';
 
-    toolBlock.innerHTML =
-        '<div class="tool-block-header">' +
-            '<span class="tool-check" style="color:var(--success)">&#9776;</span>' +
-            '<span class="tool-block-name" style="color:var(--text-muted)">Result</span>' +
-            '<button class="tool-block-toggle">Show result</button>' +
-        '</div>' +
-        '<div class="tool-block-result"><code>' + escapeHtml(prettyContent) + '</code></div>';
+    if (tableData) {
+        const rowCount = tableData.row_count || tableData.rows.length;
+        const cols = tableData.columns;
+        const rows = tableData.rows.map(r =>
+            Array.isArray(r) ? r : cols.map(c => r[c])
+        );
+        _lastTableResult = { columns: cols, rows: rows };
 
-    setupToggle(toolBlock, '.tool-block-result', '.tool-block-toggle', 'Show result', 'Hide result');
+        toolBlock.innerHTML =
+            '<div class="tool-block-header">' +
+                '<span class="tool-check" style="color:var(--success)">&#10003;</span>' +
+                '<span class="tool-block-name" style="color:var(--text-muted)">' +
+                    escapeHtml(rowCount + ' rows, ' + cols.length + ' columns') +
+                '</span>' +
+            '</div>';
+
+        const tableEl = buildSortableTable(cols, rows);
+        toolBlock.appendChild(tableEl);
+    } else {
+        let prettyContent;
+        try { prettyContent = JSON.stringify(parsed, null, 2); } catch { prettyContent = content; }
+
+        toolBlock.innerHTML =
+            '<div class="tool-block-header">' +
+                '<span class="tool-check" style="color:var(--success)">&#9776;</span>' +
+                '<span class="tool-block-name" style="color:var(--text-muted)">Result</span>' +
+                '<button class="tool-block-toggle">Show result</button>' +
+            '</div>' +
+            '<div class="tool-block-result"><code>' + escapeHtml(prettyContent) + '</code></div>';
+
+        setupToggle(toolBlock, '.tool-block-result', '.tool-block-toggle', 'Show result', 'Hide result');
+    }
+
     messagesEl.appendChild(toolBlock);
     scrollToBottom();
 }
@@ -411,6 +486,7 @@ async function sendMessage() {
         return;
     }
 
+    const isNewConversation = !currentConversationId;
     appendUserMessage(text);
     userInput.value = '';
     userInput.style.height = 'auto';
@@ -542,23 +618,63 @@ async function sendMessage() {
                             }
                         }
 
-                        let prettyContent;
-                        try { prettyContent = JSON.stringify(JSON.parse(event.content || ''), null, 2); }
-                        catch { prettyContent = event.content || ''; }
+                        // Check if this is a tabular result (has columns + rows)
+                        let parsed = null;
+                        try { parsed = JSON.parse(event.content || ''); } catch {}
+                        const isTabular = parsed && !parsed.is_error
+                            && Array.isArray(parsed.content)
+                            && parsed.content.length > 0
+                            && parsed.content[0].type === 'text';
+
+                        let tableData = null;
+                        if (isTabular) {
+                            try {
+                                const inner = JSON.parse(parsed.content[0].text);
+                                if (Array.isArray(inner.columns) && Array.isArray(inner.rows)) {
+                                    tableData = inner;
+                                }
+                            } catch {}
+                        }
 
                         const resultBlock = document.createElement('div');
                         resultBlock.className = 'tool-block complete';
                         resultBlock.style.borderColor = 'rgba(78, 204, 163, 0.15)';
 
-                        resultBlock.innerHTML =
-                            '<div class="tool-block-header">' +
-                                '<span class="tool-check" style="color:var(--success)">&#9776;</span>' +
-                                '<span class="tool-block-name" style="color:var(--text-muted)">Result</span>' +
-                                '<button class="tool-block-toggle">Show result</button>' +
-                            '</div>' +
-                            '<div class="tool-block-result"><code>' + escapeHtml(prettyContent) + '</code></div>';
+                        if (tableData) {
+                            // Render as sortable table and stash for markdown table download
+                            const rowCount = tableData.row_count || tableData.rows.length;
+                            const cols = tableData.columns;
+                            const rows = tableData.rows.map(r =>
+                                Array.isArray(r) ? r : cols.map(c => r[c])
+                            );
+                            _lastTableResult = { columns: cols, rows: rows };
 
-                        setupToggle(resultBlock, '.tool-block-result', '.tool-block-toggle', 'Show result', 'Hide result');
+                            resultBlock.innerHTML =
+                                '<div class="tool-block-header">' +
+                                    '<span class="tool-check" style="color:var(--success)">&#10003;</span>' +
+                                    '<span class="tool-block-name" style="color:var(--text-muted)">' +
+                                        escapeHtml(rowCount + ' rows, ' + cols.length + ' columns') +
+                                    '</span>' +
+                                '</div>';
+
+                            const tableEl = buildSortableTable(cols, rows);
+                            resultBlock.appendChild(tableEl);
+                        } else {
+                            let prettyContent;
+                            try { prettyContent = JSON.stringify(parsed, null, 2); }
+                            catch { prettyContent = event.content || ''; }
+
+                            resultBlock.innerHTML =
+                                '<div class="tool-block-header">' +
+                                    '<span class="tool-check" style="color:var(--success)">&#9776;</span>' +
+                                    '<span class="tool-block-name" style="color:var(--text-muted)">Result</span>' +
+                                    '<button class="tool-block-toggle">Show result</button>' +
+                                '</div>' +
+                                '<div class="tool-block-result"><code>' + escapeHtml(prettyContent) + '</code></div>';
+
+                            setupToggle(resultBlock, '.tool-block-result', '.tool-block-toggle', 'Show result', 'Hide result');
+                        }
+
                         ensureTurn().appendChild(resultBlock);
                         textBlockEl = null;
                         showLoadingIndicator();
@@ -575,6 +691,7 @@ async function sendMessage() {
                         removeLoadingIndicator();
                         if (event.conversation_id) {
                             currentConversationId = event.conversation_id;
+                            history.replaceState(null, '', '#chat/' + event.conversation_id);
                         }
                         if (turnEl) {
                             for (const el of turnEl.querySelectorAll('.tool-block:not(.complete)')) {
@@ -606,6 +723,9 @@ async function sendMessage() {
         currentAbortController = null;
         setStreaming(false);
         await loadConversations();
+        if (isNewConversation && currentConversationId) {
+            generateTitle(currentConversationId);
+        }
     }
 }
 
@@ -647,26 +767,208 @@ function scrollToBottom() {
 // --- Loading indicator (asterisk + astronomy words) ---
 
 const ASTRO_WORDS = [
-    'Querying the cosmos',
-    'Scanning photon counts',
-    'Searching the archive',
-    'Calibrating response matrix',
-    'Extracting spectra',
-    'Cross-matching sources',
-    'Resolving coordinates',
-    'Fitting spectral model',
-    'Analyzing light curve',
-    'Detecting X-ray sources',
-    'Checking exposure map',
-    'Reading event file',
-    'Filtering energy bands',
-    'Computing flux limits',
-    'Stacking observations',
-    'Correlating catalogs',
-    'Measuring column density',
-    'Tracing photon paths',
-    'Deconvolving PSF',
-    'Folding through ARF',
+    // telescope & hardware
+    'Polishing mirrors',
+    'Aligning baffles',
+    'Warming up CCDs',
+    'Cooling down CCDs',
+    'Rebooting telescope',
+    'Tapping the gauge',
+    'Jiggling the antenna',
+    'Tuning the detector',
+    'Nudging the aspect',
+    'Petting the satellite',
+    'Greasing optics',
+    'Rotating solar panels',
+    'Degassing the chamber',
+    'Focusing the optics',
+    'Checking the thermostat',
+    'Realigning gratings',
+    'Swapping filters',
+    'Recocking the shutter',
+    'Buffing the Wolter',
+    'Tightening the baffles',
+    'Replacing a fuse',
+    'Updating firmware',
+    'Cycling the power',
+    'Turning it off and on',
+    // sources & targets
+    'Asking the Crab',
+    'Poking Sgr A*',
+    'Waking Chandra',
+    'Whispering to XMM',
+    'Bothering HEASARC',
+    'Staring at Cas A',
+    'Stalking Cyg X-1',
+    'Pinging Vela X-1',
+    'Disturbing Cen A',
+    'Provoking a magnetar',
+    'Annoying a pulsar',
+    'Startling a quasar',
+    'Cornering an AGN',
+    'Interrogating M87',
+    'Surveying Perseus',
+    'Orbiting Sco X-1',
+    'Approaching Her X-1',
+    'Visiting the Bullet',
+    // archive & data
+    'Dusting off archive',
+    'Shaking VOTable',
+    'Bribing TAP server',
+    'Feeding the pipeline',
+    'Wrangling catalogs',
+    'Pleading with ADQL',
+    'Flattering the API',
+    'Negotiating bandwidth',
+    'Clearing the cache',
+    'Refreshing the token',
+    'Parsing the XML',
+    'Unzipping the FITS',
+    'Defragmenting archive',
+    'Indexing columns',
+    'Paginating results',
+    'Sorting by flux',
+    'Joining tables',
+    'Flattening nested JSON',
+    'Escaping wildcards',
+    'Retrying the query',
+    'Waiting in queue',
+    'Downloading slowly',
+    'Unpickling data',
+    // software woes
+    'Restarting CIAO',
+    'Summoning HEASOFT',
+    'Placating SAS',
+    'Compiling from source',
+    'Updating CALDB',
+    'Sourcing the bashrc',
+    'Setting PFILES',
+    'Chasing a segfault',
+    'Reading the traceback',
+    'Googling the error',
+    'Checking Stack Overflow',
+    'Upgrading Python',
+    'Downgrading Python',
+    'Pinning dependencies',
+    'Breaking the build',
+    'Fixing the build',
+    'Clearing IRAF cache',
+    'Recompiling XSPEC',
+    // photons & physics
+    'Tickling photons',
+    'Herding photons',
+    'Contemplating photons',
+    'Counting to ten keV',
+    'Collecting soft photons',
+    'Dodging cosmic rays',
+    'Scolding cosmic rays',
+    'Shushing background',
+    'Absorbing column density',
+    'Scattering off mirrors',
+    'Diffracting politely',
+    'Fluorescing iron',
+    'Compton scattering',
+    'Inverse Compton-ing',
+    'Bremsstrahlung-ing',
+    'Synchrotron-ing',
+    'Photoionizing plasma',
+    // pileup grief cycle
+    'Suspecting pileup',
+    'Denying pileup',
+    'Accepting pileup',
+    'Bargaining with pileup',
+    'Modeling the pileup',
+    'Ignoring the pileup',
+    // calibration & analysis
+    'Admiring the PSF',
+    'Trusting the ARF',
+    'Doubting the RMF',
+    'Questioning the background',
+    'Blaming the Sun',
+    'Blaming the background',
+    'Blaming the weather',
+    'Blaming South Atlantic',
+    'Losing a factor of 2',
+    'Finding a factor of 2',
+    'Losing a factor of pi',
+    'Rounding aggressively',
+    'Squeezing significance',
+    'Fudging error bars',
+    'Inflating error bars',
+    'Hiding systematics',
+    'Normalizing something',
+    'Renormalizing again',
+    'Thawing all parameters',
+    'Freezing everything',
+    'Unfreezing nH',
+    'Refreezing nH',
+    'Adding a powerlaw',
+    'Adding another Gaussian',
+    'Removing the Gaussian',
+    'Trying a broken powerlaw',
+    'Giving up on chi-squared',
+    'Switching to C-stat',
+    // display & plotting
+    'Zooming in',
+    'Zooming out',
+    'Rotating image',
+    'Unrotating image',
+    'Toggling log scale',
+    'Choosing colormap',
+    'Regretting colormap',
+    'Trying viridis',
+    'Going back to ds9',
+    'Adjusting the stretch',
+    'Enhancing contrast',
+    'Smoothing too much',
+    'Unsmoothing',
+    'Binning adaptively',
+    'Rebinning again',
+    'Overlaying contours',
+    'Removing contours',
+    'Labeling the axes',
+    'Fixing the legend',
+    'Exporting to PNG',
+    'Exporting to PDF',
+    'Rasterizing vectors',
+    // human activities
+    'Refreshing coffee',
+    'Microwaving tea',
+    'Checking email',
+    'Ignoring Slack',
+    'Pretending to know',
+    'Faking confidence',
+    'Looking busy',
+    'Stalling for time',
+    'Thinking deeply',
+    'Pondering existence',
+    'Reading the manual',
+    'Ignoring warnings',
+    'Checking notes',
+    'Asking a postdoc',
+    'Phoning Cambridge',
+    'Emailing Vilspa',
+    'Filing a bug report',
+    'Closing the bug report',
+    'Reopening the bug',
+    'Writing it down',
+    'Forgetting it',
+    'Guessing units',
+    'Converting epochs',
+    'Squinting harder',
+    'Adjusting monocle',
+    'Consulting oracle',
+    // classic silly
+    'Reticulating splines',
+    'Reversing polarity',
+    'Engaging flux capacitor',
+    'Recalibrating vibes',
+    'Flipping bits',
+    'Depixelating',
+    'Enhancing the image',
+    'Rotating the turbolift',
+    'Charging the lasers',
+    'Warming up warp drive',
 ];
 
 let loadingWordInterval = null;
@@ -709,10 +1011,13 @@ function removeLoadingIndicator() {
 
 // --- Sortable data table builder (ported from TAPchat) ---
 
-function buildSortableTable(columns, rows) {
+function buildSortableTable(columns, rows, downloadData) {
     const sortedRows = rows.slice();
     let sortCol = -1;
     let sortAsc = true;
+
+    const dlCols = downloadData ? downloadData.columns : columns;
+    const dlRows = downloadData ? downloadData.rows : sortedRows;
 
     const container = document.createElement('div');
     container.className = 'table-container';
@@ -722,8 +1027,10 @@ function buildSortableTable(columns, rows) {
     header.className = 'table-header';
     const downloadBtn = document.createElement('button');
     downloadBtn.className = 'table-download-btn';
-    downloadBtn.textContent = 'Download CSV';
-    downloadBtn.addEventListener('click', () => downloadCSV(columns, sortedRows));
+    downloadBtn.textContent = downloadData
+        ? 'Download CSV (' + dlRows.length + ' rows)'
+        : 'Download CSV';
+    downloadBtn.addEventListener('click', () => downloadCSV(dlCols, dlRows));
     header.appendChild(downloadBtn);
     container.appendChild(header);
 
@@ -835,7 +1142,8 @@ function downloadCSV(columns, rows) {
 function parseMarkdownTable(block) {
     const lines = block.trim().split('\n').filter(l => l.trim());
     if (lines.length < 2) return null;
-    const parseRow = (line) => line.split('|').slice(1, -1).map(c => c.trim());
+    const stripMd = (s) => s.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').replace(/`([^`]+)`/g, '$1');
+    const parseRow = (line) => line.split('|').slice(1, -1).map(c => stripMd(c.trim()));
     const columns = parseRow(lines[0]);
     if (columns.length === 0) return null;
     const isSep = /^\|[\s\-:]+(\|[\s\-:]+)+\|?\s*$/.test(lines[1]);
@@ -857,6 +1165,20 @@ function renderMarkdown(text) {
     if (!text) return '';
     let html = escapeHtml(text);
 
+    // Extract markdown tables FIRST, before inline formatting mangles cell contents.
+    // parseMarkdownTable strips markdown formatting from cells itself.
+    html = html.replace(
+        /((?:^\|.+\|[ \t]*$\n?){2,})/gm,
+        (block) => {
+            const raw = block.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+            const parsed = parseMarkdownTable(raw);
+            if (!parsed) return block;
+            const id = 'md-table-' + (++_tableCounter);
+            _pendingTables[id] = parsed;
+            return '<div id="' + id + '"></div>';
+        }
+    );
+
     // Code blocks
     html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
         return '<pre><code>' + code + '</code></pre>';
@@ -876,20 +1198,6 @@ function renderMarkdown(text) {
 
     // Links
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-
-    // Markdown tables → placeholder divs for sortable table injection
-    html = html.replace(
-        /((?:^\|.+\|[ \t]*$\n?){2,})/gm,
-        (block) => {
-            // Unescape the block so parseMarkdownTable sees raw pipes
-            const raw = block.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
-            const parsed = parseMarkdownTable(raw);
-            if (!parsed) return block;
-            const id = 'md-table-' + (++_tableCounter);
-            _pendingTables[id] = parsed;
-            return '<div id="' + id + '"></div>';
-        }
-    );
 
     // Lists
     html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
@@ -912,7 +1220,7 @@ function hydratePendingTables(container) {
     for (const [id, parsed] of Object.entries(_pendingTables)) {
         const placeholder = container.querySelector('#' + id);
         if (placeholder) {
-            const tableEl = buildSortableTable(parsed.columns, parsed.rows);
+            const tableEl = buildSortableTable(parsed.columns, parsed.rows, _lastTableResult);
             placeholder.replaceWith(tableEl);
         }
         delete _pendingTables[id];

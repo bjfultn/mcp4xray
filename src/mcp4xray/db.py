@@ -214,6 +214,13 @@ class Database:
         rows = await cursor.fetchall()
         return [_row_to_dict(cursor, row) for row in rows]
 
+    async def set_conversation_title(self, conversation_id: int, title: str):
+        await self._conn.execute(
+            "UPDATE conversations SET title = ? WHERE id = ?",
+            (title, conversation_id),
+        )
+        await self._conn.commit()
+
     async def delete_conversation(self, conversation_id: int, user_id: int) -> bool:
         """Delete a conversation owned by user_id. Returns True if deleted."""
         cursor = await self._conn.execute(

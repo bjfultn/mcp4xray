@@ -96,7 +96,7 @@ async def run_chat_turn(
             yield ChatEvent(type="tool_result", tool_name=tc.name, content=result_text)
 
             working_messages = llm.append_tool_interaction(
-                working_messages, tc.name, tc.arguments, result_text
+                working_messages, tc.name, tc.arguments, result_text, response
             )
 
     yield ChatEvent(type="error", content="Max tool iterations reached")

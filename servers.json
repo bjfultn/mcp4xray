@@ -5,12 +5,8 @@
       "url": "http://host.docker.internal:8001/mcp"
     },
     {
-      "name": "Mock Archive (dev)",
-      "url": "http://localhost:9000/mcp"
-    },
-    {
       "name": "XMM-Newton",
-      "url": "https://xmm-mcp.example.com/mcp"
+      "url": "http://host.docker.internal:8002/mcp"
     }
   ],
   "models": [
@@ -18,8 +14,10 @@
     {"id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6", "provider": "anthropic"},
     {"id": "gpt-5.4", "name": "GPT-5.4", "provider": "openai"},
     {"id": "gpt-5-mini-2025-08-07", "name": "GPT-5 Mini", "provider": "openai"},
-    {"id": "gemini-3.1-pro", "name": "Gemini 3.1 Pro", "provider": "gemini"},
-    {"id": "gemini-3.1-flash", "name": "Gemini 3.1 Flash", "provider": "gemini"},
-    {"id": "qwen3:14b", "name": "Qwen3 14B", "provider": "ollama", "base_url": "http://ogsrotag2423.no-ip.org:11434/v1"}
+    {"id": "gemini-3.1-pro-preview", "name": "Gemini 3.1 Pro", "provider": "gemini"},
+    {"id": "gemini-3-flash-preview", "name": "Gemini 3 Flash", "provider": "gemini"},
+    {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "provider": "gemini"},
+    {"id": "qwen3:14b", "name": "Qwen3 14B", "provider": "ollama", "base_url": "http://ogsrotag2423.no-ip.org:11434/v1"},
+    {"id": "qwen3:8b", "name": "Qwen3 8B", "provider": "ollama", "base_url": "http://ogsrotag2423.no-ip.org:11434/v1"}
   ]
 }

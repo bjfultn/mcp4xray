@@ -114,6 +114,8 @@ class LLMResponse:
 
     text: str = ""
     tool_calls: list[ToolCall] = field(default_factory=list)
+    # Gemini: raw model parts preserving thoughtSignature for replay
+    _gemini_parts: list[dict[str, Any]] | None = field(default=None, repr=False)
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +169,7 @@ class LLMBackend:
         tool_name: str,
         arguments: dict[str, Any],
         result: str,
+        response: LLMResponse | None = None,
     ) -> list[dict[str, Any]]:
         """Return a *new* message list with the tool call and its result appended.
 
@@ -178,8 +181,7 @@ class LLMBackend:
         elif self.provider == "anthropic":
             return self._append_anthropic(messages, tool_name, arguments, result)
         elif self.provider == "gemini":
-            # Gemini uses a similar structure; for now fall back to OpenAI style
-            return self._append_openai(messages, tool_name, arguments, result)
+            return self._append_gemini(messages, tool_name, arguments, result, response)
         else:
             raise ValueError(f"Unknown provider: {self.provider!r}")
 
@@ -356,19 +358,29 @@ class LLMBackend:
 
     # -- Gemini -------------------------------------------------------------
 
+    def _gemini_contents(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Convert internal message list to Gemini contents format."""
+        contents: list[dict[str, Any]] = []
+        for msg in messages:
+            # Messages appended by _append_gemini already have Gemini format
+            if "parts" in msg:
+                contents.append(msg)
+                continue
+
+            role = "user" if msg["role"] == "user" else "model"
+            text = msg.get("content") or ""
+            if not text:
+                continue
+            contents.append({"role": role, "parts": [{"text": text}]})
+        return contents
+
     async def _complete_gemini(
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None,
         system_prompt: str,
     ) -> LLMResponse:
-        # Build Gemini contents from messages
-        contents: list[dict[str, Any]] = []
-        for msg in messages:
-            role = "user" if msg["role"] == "user" else "model"
-            contents.append(
-                {"role": role, "parts": [{"text": msg.get("content", "")}]}
-            )
+        contents = self._gemini_contents(messages)
 
         payload: dict[str, Any] = {"contents": contents}
         if system_prompt:
@@ -397,9 +409,12 @@ class LLMBackend:
 
         text_parts: list[str] = []
         tool_calls: list[ToolCall] = []
+        raw_parts: list[dict[str, Any]] = []
 
         for candidate in data.get("candidates", []):
-            for part in candidate.get("content", {}).get("parts", []):
+            candidate_parts = candidate.get("content", {}).get("parts", [])
+            raw_parts.extend(candidate_parts)
+            for part in candidate_parts:
                 if "text" in part:
                     text_parts.append(part["text"])
                 elif "functionCall" in part:
@@ -408,7 +423,60 @@ class LLMBackend:
                         ToolCall(name=fc["name"], arguments=fc.get("args", {}))
                     )
 
-        return LLMResponse(text="\n".join(text_parts), tool_calls=tool_calls)
+        return LLMResponse(
+            text="\n".join(text_parts),
+            tool_calls=tool_calls,
+            _gemini_parts=raw_parts if tool_calls else None,
+        )
+
+    def _append_gemini(
+        self,
+        messages: list[dict[str, Any]],
+        tool_name: str,
+        arguments: dict[str, Any],
+        result: str,
+        response: LLMResponse | None = None,
+    ) -> list[dict[str, Any]]:
+        new_messages = list(messages)
+
+        # If we have raw parts from the model response (with thoughtSignature),
+        # replay them exactly. Only add the model turn once (check if already added).
+        last_msg = new_messages[-1] if new_messages else {}
+        model_turn_exists = last_msg.get("role") == "model" and any(
+            "functionCall" in p for p in last_msg.get("parts", [])
+        )
+
+        if not model_turn_exists:
+            if response and response._gemini_parts:
+                # Replay the model's raw parts preserving thoughtSignature
+                new_messages.append({"role": "model", "parts": response._gemini_parts})
+            else:
+                new_messages.append({
+                    "role": "model",
+                    "parts": [{"functionCall": {"name": tool_name, "args": arguments}}],
+                })
+
+        # Append function response
+        try:
+            response_data = json.loads(result)
+        except (json.JSONDecodeError, TypeError):
+            response_data = {"result": result}
+
+        # Check if there's already a user turn with functionResponse parts to append to
+        last_msg = new_messages[-1] if new_messages else {}
+        if last_msg.get("role") == "user" and any(
+            "functionResponse" in p for p in last_msg.get("parts", [])
+        ):
+            last_msg["parts"].append(
+                {"functionResponse": {"name": tool_name, "response": response_data}}
+            )
+        else:
+            new_messages.append({
+                "role": "user",
+                "parts": [{"functionResponse": {"name": tool_name, "response": response_data}}],
+            })
+
+        return new_messages
 
 
 # ---------------------------------------------------------------------------
