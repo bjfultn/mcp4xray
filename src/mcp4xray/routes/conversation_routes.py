@@ -27,10 +27,16 @@ async def get_messages(conv_id: int, request: Request, user: dict = Depends(requ
     return {"messages": messages}
 
 
+_TITLE_MODELS = [
+    ("anthropic", "claude-haiku-4-5-20251001"),
+    ("openai", "gpt-4o-mini"),
+    ("gemini", "gemini-2.5-flash"),
+]
+
+
 @router.post("/conversations/{conv_id}/generate-title")
 async def generate_title(conv_id: int, request: Request, user: dict = Depends(require_auth)):
     db = request.app.state.db
-    app_config = request.app.state.app_config
 
     messages = await db.get_messages(conv_id)
     user_msg = next((m["content"] for m in messages if m["role"] == "user"), None)
@@ -38,20 +44,25 @@ async def generate_title(conv_id: int, request: Request, user: dict = Depends(re
     if not user_msg:
         raise HTTPException(status_code=400, detail="No user message found")
 
-    # Use a fast, cheap model for title generation
-    api_key = app_config.anthropic_api_key or ""
-    if api_key:
-        provider, model_id = "anthropic", "claude-haiku-4-5-20251001"
-    else:
-        api_key = app_config.openai_api_key or ""
-        if api_key:
-            provider, model_id = "openai", "gpt-4o-mini"
-        else:
-            title = user_msg[:30].strip()
-            if len(user_msg) > 30:
-                title += "..."
-            await db.set_conversation_title(conv_id, title)
-            return {"title": title}
+    # Try the user's available API keys in preference order
+    user_keys = await db.get_user_api_keys(user["user_id"])
+    keys_by_provider = {k["provider"]: k["api_key"] for k in user_keys if k["api_key"]}
+
+    provider = None
+    model_id = None
+    api_key = None
+    for p, m in _TITLE_MODELS:
+        if p in keys_by_provider:
+            provider, model_id, api_key = p, m, keys_by_provider[p]
+            break
+
+    if not api_key:
+        # No usable key — fall back to truncated user message
+        title = user_msg[:30].strip()
+        if len(user_msg) > 30:
+            title += "..."
+        await db.set_conversation_title(conv_id, title)
+        return {"title": title}
 
     prompt = "Title this chat in 2-3 words. No quotes, no punctuation.\n\n"
     prompt += f"User: {user_msg[:200]}\n"

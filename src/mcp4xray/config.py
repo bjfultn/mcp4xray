@@ -32,9 +32,6 @@ class AppConfig:
     admin_username: str
     admin_password: str
     database_url: str = "sqlite:///./mcp4xray.db"
-    anthropic_api_key: str = ""
-    openai_api_key: str = ""
-    gemini_api_key: str = ""
 
     @classmethod
     def from_env(cls) -> AppConfig:
@@ -43,9 +40,6 @@ class AppConfig:
             admin_username=os.environ.get("ADMIN_USERNAME", "admin"),
             admin_password=os.environ.get("ADMIN_PASSWORD", "changeme"),
             database_url=os.environ.get("DATABASE_URL", "sqlite:///./mcp4xray.db"),
-            anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
-            openai_api_key=os.environ.get("OPENAI_API_KEY", ""),
-            gemini_api_key=os.environ.get("GEMINI_API_KEY", ""),
         )
 
 

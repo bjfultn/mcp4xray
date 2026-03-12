@@ -10,6 +10,7 @@ dependencies = [
     "PyJWT>=2.9",
     "bcrypt>=4.2",
     "aiosqlite>=0.20",
+    "cryptography>=44.0",
 ]
 
 [project.optional-dependencies]

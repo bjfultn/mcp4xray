@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import time
 import uuid
 
 import aiosqlite
+from cryptography.fernet import Fernet
 
 _SCHEMA = """\
 CREATE TABLE IF NOT EXISTS users (
@@ -55,12 +58,38 @@ def _row_to_dict(cursor: aiosqlite.Cursor, row: aiosqlite.Row) -> dict:
     return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
 
 
+def _derive_fernet_key(secret: str) -> bytes:
+    """Derive a Fernet key from an arbitrary secret string."""
+    digest = hashlib.sha256(secret.encode()).digest()
+    return base64.urlsafe_b64encode(digest)
+
+
 class Database:
     """Async wrapper around an SQLite database for the mcp4xray application."""
 
-    def __init__(self, db_path: str) -> None:
+    def __init__(self, db_path: str, encryption_secret: str = "") -> None:
         self._db_path = db_path
         self._conn: aiosqlite.Connection | None = None
+        self._fernet: Fernet | None = None
+        if encryption_secret:
+            self._fernet = Fernet(_derive_fernet_key(encryption_secret))
+
+    def _encrypt(self, plaintext: str) -> str:
+        """Encrypt a string. Returns the ciphertext as a base64 string."""
+        if not self._fernet or not plaintext:
+            return plaintext
+        return self._fernet.encrypt(plaintext.encode()).decode()
+
+    def _decrypt(self, ciphertext: str) -> str:
+        """Decrypt a string. Falls back to returning as-is if decryption fails
+        (handles pre-encryption plaintext keys during migration)."""
+        if not self._fernet or not ciphertext:
+            return ciphertext
+        try:
+            return self._fernet.decrypt(ciphertext.encode()).decode()
+        except Exception:
+            # Likely a plaintext key from before encryption was enabled
+            return ciphertext
 
     async def initialize(self) -> None:
         """Open the database connection and create tables if needed."""
@@ -268,11 +297,12 @@ class Database:
     ) -> None:
         """Set or update an API key (and optional base_url) for a user/provider."""
         now = time.time()
+        encrypted_key = self._encrypt(api_key)
         await self._conn.execute(
             "INSERT INTO user_api_keys (user_id, provider, api_key, base_url, updated_at) "
             "VALUES (?, ?, ?, ?, ?) "
             "ON CONFLICT(user_id, provider) DO UPDATE SET api_key = ?, base_url = ?, updated_at = ?",
-            (user_id, provider, api_key, base_url, now, api_key, base_url, now),
+            (user_id, provider, encrypted_key, base_url, now, encrypted_key, base_url, now),
         )
         await self._conn.commit()
 
@@ -292,7 +322,10 @@ class Database:
             (user_id,),
         )
         rows = await cursor.fetchall()
-        return [{"provider": r[0], "api_key": r[1], "base_url": r[2] or ""} for r in rows]
+        return [
+            {"provider": r[0], "api_key": self._decrypt(r[1]), "base_url": r[2] or ""}
+            for r in rows
+        ]
 
     async def get_user_provider_settings(self, user_id: int, provider: str) -> dict | None:
         """Return {api_key, base_url} for a user/provider, or None."""
@@ -303,4 +336,4 @@ class Database:
         row = await cursor.fetchone()
         if not row:
             return None
-        return {"api_key": row[0], "base_url": row[1] or ""}
+        return {"api_key": self._decrypt(row[0]), "base_url": row[1] or ""}

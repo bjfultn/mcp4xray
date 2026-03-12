@@ -92,7 +92,6 @@ class ChatRequest(BaseModel):
 @router.post("/chat")
 async def chat(req: ChatRequest, request: Request, user: dict = Depends(require_auth)):
     db = request.app.state.db
-    app_config = request.app.state.app_config
     servers_config = request.app.state.servers_config
 
     server = next((s for s in servers_config.servers if s.name == req.server_name), None)
@@ -103,23 +102,17 @@ async def chat(req: ChatRequest, request: Request, user: dict = Depends(require_
     if not model_entry:
         raise HTTPException(status_code=400, detail=f"Unknown model: {req.model_id}")
 
-    # User settings override server-level keys and base_url
+    # Get user's API key for this provider
     user_settings = await db.get_user_provider_settings(user["user_id"], model_entry.provider)
-    if user_settings and user_settings["api_key"]:
-        api_key = user_settings["api_key"]
-    else:
-        api_key_map = {
-            "anthropic": app_config.anthropic_api_key,
-            "openai": app_config.openai_api_key,
-            "gemini": app_config.gemini_api_key,
-            "ollama": "",
-        }
-        api_key = api_key_map.get(model_entry.provider, "")
+    api_key = (user_settings["api_key"] if user_settings else "") or ""
+    base_url = (user_settings["base_url"] if user_settings else "") or getattr(model_entry, "base_url", "") or ""
 
-    if user_settings and user_settings["base_url"]:
-        base_url = user_settings["base_url"]
-    else:
-        base_url = getattr(model_entry, "base_url", "") or ""
+    # Ollama doesn't need a key; all other providers do
+    if not api_key and model_entry.provider != "ollama":
+        raise HTTPException(
+            status_code=400,
+            detail=f"No API key configured for {model_entry.provider}. Add one in Settings.",
+        )
 
     if req.conversation_id:
         conv_id = req.conversation_id

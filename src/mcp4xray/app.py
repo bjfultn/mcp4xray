@@ -16,7 +16,10 @@ from mcp4xray.auth import hash_password
 async def lifespan(app: FastAPI):
     app_config = AppConfig.from_env()
     servers_config = load_config(os.environ.get("MCP_SERVERS_CONFIG", "servers.json"))
-    db = Database(app_config.database_url.replace("sqlite:///", ""))
+    db = Database(
+        app_config.database_url.replace("sqlite:///", ""),
+        encryption_secret=app_config.jwt_secret,
+    )
     await db.initialize()
     existing = await db.get_user_by_username(app_config.admin_username)
     if not existing:
