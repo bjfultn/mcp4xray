@@ -21,9 +21,21 @@ _MAX_HISTORY_TOKENS = 100_000
 _CHARS_PER_TOKEN = 4
 
 
+def _msg_chars(msg: dict[str, Any]) -> int:
+    """Estimate character count for a message, handling None and Gemini parts."""
+    content = msg.get("content")
+    if content:
+        return len(content)
+    # Gemini-style messages use "parts" instead of "content"
+    parts = msg.get("parts")
+    if parts:
+        return sum(len(str(p.get("text", ""))) for p in parts if isinstance(p, dict))
+    return 0
+
+
 def _estimate_tokens(messages: list[dict[str, Any]]) -> int:
     """Rough token estimate: ~4 chars per token."""
-    return sum(len(m.get("content", "")) for m in messages) // _CHARS_PER_TOKEN
+    return sum(_msg_chars(m) for m in messages) // _CHARS_PER_TOKEN
 
 
 def trim_messages(
@@ -47,14 +59,14 @@ def trim_messages(
     rest = messages[1:]
 
     # Budget remaining after the first message
-    first_tokens = len(first.get("content", "")) // _CHARS_PER_TOKEN
+    first_tokens = _msg_chars(first) // _CHARS_PER_TOKEN
     budget = max_tokens - first_tokens
 
     # Walk backwards from the end, accumulating messages that fit
     kept_tail: list[dict[str, Any]] = []
     used = 0
     for msg in reversed(rest):
-        msg_tokens = len(msg.get("content", "")) // _CHARS_PER_TOKEN
+        msg_tokens = _msg_chars(msg) // _CHARS_PER_TOKEN
         if used + msg_tokens > budget:
             break
         kept_tail.append(msg)
