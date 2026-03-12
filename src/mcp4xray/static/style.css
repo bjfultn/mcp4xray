@@ -707,12 +707,28 @@ a:hover {
     border-left: 2px solid var(--accent);
 }
 
+.chat-item-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+    gap: 1px;
+}
+
 .chat-item-title {
     font-size: 0.90rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    flex: 1;
+}
+
+.chat-item-model {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.7;
 }
 
 .chat-item-date {

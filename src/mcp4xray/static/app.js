@@ -210,12 +210,16 @@ function renderConversationList(conversations) {
         item.className = 'chat-item' + (conv.id === currentConversationId ? ' active' : '');
         item.dataset.id = conv.id;
 
-        const title = conv.title || conv.server_name + ' / ' + (modelNames[conv.model] || conv.model);
+        const title = conv.title || conv.server_name;
+        const modelLabel = modelNames[conv.model] || conv.model;
         const date = new Date(conv.updated_at * 1000);
         const dateStr = formatDate(date);
 
         item.innerHTML =
-            '<span class="chat-item-title">' + escapeHtml(title) + '</span>' +
+            '<div class="chat-item-info">' +
+                '<span class="chat-item-title">' + escapeHtml(title) + '</span>' +
+                '<span class="chat-item-model">' + escapeHtml(modelLabel) + '</span>' +
+            '</div>' +
             '<span class="chat-item-date">' + escapeHtml(dateStr) + '</span>' +
             '<button class="chat-item-delete" title="Delete">&times;</button>';
 
