@@ -13,6 +13,70 @@ from mcp4xray.chat import run_chat_turn
 
 router = APIRouter()
 
+# Max chars to keep from a tool result when replaying history.
+# Enough to show column names, a few sample rows, and row counts.
+_TOOL_RESULT_CAP = 800
+
+
+def _truncate_tool_result(content: str) -> str:
+    """Produce a short summary of a tool result for conversation history."""
+    try:
+        parsed = json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        return content[:_TOOL_RESULT_CAP]
+
+    # Structured MCP result with tabular data inside
+    if isinstance(parsed, dict) and isinstance(parsed.get("content"), list):
+        for item in parsed["content"]:
+            if item.get("type") == "text":
+                try:
+                    inner = json.loads(item["text"])
+                except (json.JSONDecodeError, TypeError):
+                    break
+                if isinstance(inner, dict) and "columns" in inner and "rows" in inner:
+                    cols = inner["columns"]
+                    rows = inner["rows"]
+                    total = inner.get("row_count", len(rows))
+                    preview_rows = rows[:3]
+                    summary = {
+                        "columns": cols,
+                        "row_count": total,
+                        "preview_rows": preview_rows,
+                    }
+                    return json.dumps(summary)
+
+    # Generic: just truncate
+    short = content[:_TOOL_RESULT_CAP]
+    if len(content) > _TOOL_RESULT_CAP:
+        short += f"... [{len(content)} chars total]"
+    return short
+
+
+def _build_history(prev_messages: list[dict]) -> list[dict]:
+    """Build LLM message history from stored messages.
+
+    Keeps user/assistant messages verbatim. Includes tool_call and
+    tool_result as assistant notes so the LLM knows what tools were
+    used and roughly what came back, without replaying huge payloads.
+    """
+    messages: list[dict] = []
+    for m in prev_messages:
+        role = m["role"]
+        if role in ("user", "assistant"):
+            messages.append({"role": role, "content": m["content"]})
+        elif role == "tool_call":
+            # Summarise as an assistant note
+            try:
+                tc = json.loads(m["content"])
+                note = f"[Called tool: {tc.get('name', '?')}({json.dumps(tc.get('arguments', {}))})]"
+            except (json.JSONDecodeError, TypeError):
+                note = f"[Called tool: {m['content'][:200]}]"
+            messages.append({"role": "assistant", "content": note})
+        elif role == "tool_result":
+            truncated = _truncate_tool_result(m["content"])
+            messages.append({"role": "user", "content": f"[Tool result: {truncated}]"})
+    return messages
+
 
 class ChatRequest(BaseModel):
     message: str
@@ -56,7 +120,7 @@ async def chat(req: ChatRequest, request: Request, user: dict = Depends(require_
     if req.conversation_id:
         conv_id = req.conversation_id
         prev_messages = await db.get_messages(conv_id)
-        messages = [{"role": m["role"], "content": m["content"]} for m in prev_messages]
+        messages = _build_history(prev_messages)
     else:
         conv_id = await db.create_conversation(user["user_id"], req.server_name, req.model_id)
         messages = []
@@ -70,6 +134,9 @@ async def chat(req: ChatRequest, request: Request, user: dict = Depends(require_
         mcp = MCPClient(server.url)
         full_text = ""
         try:
+            # Send conversation_id immediately so the UI can update the sidebar
+            yield f"data: {json.dumps({'type': 'conversation_id', 'conversation_id': conv_id})}\n\n"
+
             try:
                 await mcp.connect()
             except Exception as exc:

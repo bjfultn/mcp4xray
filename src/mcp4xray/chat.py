@@ -13,6 +13,9 @@ from typing import Any, AsyncIterator
 from mcp4xray.llm import LLMBackend, LLMResponse
 
 MAX_TOOL_ITERATIONS = 20
+# Max chars of a tool result to feed back to the LLM. Large results (e.g.
+# 10k-row tables) are truncated for the LLM but sent in full to the UI.
+_TOOL_RESULT_LLM_CAP = 4000
 
 BASE_SYSTEM_PROMPT = """\
 You are an expert X-ray astronomy archive assistant with deep knowledge of \
@@ -44,6 +47,43 @@ class ChatEvent:
     content: str = ""
     tool_name: str = ""
     tool_args: dict[str, Any] | None = None
+
+
+def _truncate_for_llm(result_text: str) -> str:
+    """Truncate a tool result for the LLM's working context.
+
+    For tabular MCP results, produces a compact summary with column names,
+    row count, and a few sample rows. For other results, plain truncation.
+    """
+    if len(result_text) <= _TOOL_RESULT_LLM_CAP:
+        return result_text
+
+    try:
+        parsed = json.loads(result_text)
+    except (json.JSONDecodeError, TypeError):
+        return result_text[:_TOOL_RESULT_LLM_CAP] + f"... [{len(result_text)} chars truncated]"
+
+    # Structured MCP result: {"content": [{"type": "text", "text": "..."}]}
+    if isinstance(parsed, dict) and isinstance(parsed.get("content"), list):
+        for item in parsed["content"]:
+            if item.get("type") == "text":
+                try:
+                    inner = json.loads(item["text"])
+                except (json.JSONDecodeError, TypeError):
+                    break
+                if isinstance(inner, dict) and "columns" in inner and "rows" in inner:
+                    cols = inner["columns"]
+                    rows = inner["rows"]
+                    total = inner.get("row_count", len(rows))
+                    summary = {
+                        "columns": cols,
+                        "row_count": total,
+                        "preview_rows": rows[:5],
+                        "note": f"Showing 5 of {total} rows. Full data was sent to the user.",
+                    }
+                    return json.dumps({"content": [{"type": "text", "text": json.dumps(summary)}]})
+
+    return result_text[:_TOOL_RESULT_LLM_CAP] + f"... [{len(result_text)} chars truncated]"
 
 
 async def run_chat_turn(
@@ -95,8 +135,10 @@ async def run_chat_turn(
             result_text = json.dumps(result)
             yield ChatEvent(type="tool_result", tool_name=tc.name, content=result_text)
 
+            # Send truncated result to LLM to avoid blowing context on large tables
+            llm_result = _truncate_for_llm(result_text)
             working_messages = llm.append_tool_interaction(
-                working_messages, tc.name, tc.arguments, result_text, response
+                working_messages, tc.name, tc.arguments, llm_result, response
             )
 
     yield ChatEvent(type="error", content="Max tool iterations reached")

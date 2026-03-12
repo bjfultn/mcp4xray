@@ -571,6 +571,36 @@ async function sendMessage() {
                 try { event = JSON.parse(line.slice(6)); } catch { continue; }
 
                 switch (event.type) {
+                    case 'conversation_id': {
+                        if (event.conversation_id) {
+                            currentConversationId = event.conversation_id;
+                            history.replaceState(null, '', '#chat/' + event.conversation_id);
+                            if (isNewConversation) {
+                                // Add to sidebar immediately with placeholder title
+                                const placeholder = server + ' / ' + (modelNames[model] || model);
+                                const item = document.createElement('div');
+                                item.className = 'chat-item active';
+                                item.dataset.id = event.conversation_id;
+                                item.innerHTML =
+                                    '<span class="chat-item-title">' + escapeHtml(placeholder) + '</span>' +
+                                    '<span class="chat-item-date">now</span>' +
+                                    '<button class="chat-item-delete" title="Delete">&times;</button>';
+                                const convId = event.conversation_id;
+                                item.addEventListener('click', (e) => {
+                                    if (e.target.closest('.chat-item-delete')) {
+                                        e.stopPropagation();
+                                        deleteConversation(convId);
+                                        return;
+                                    }
+                                    loadConversation(convId);
+                                });
+                                document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
+                                chatList.prepend(item);
+                            }
+                        }
+                        break;
+                    }
+
                     case 'text': {
                         removeLoadingIndicator();
                         const block = ensureTextBlock();
@@ -689,10 +719,6 @@ async function sendMessage() {
 
                     case 'done':
                         removeLoadingIndicator();
-                        if (event.conversation_id) {
-                            currentConversationId = event.conversation_id;
-                            history.replaceState(null, '', '#chat/' + event.conversation_id);
-                        }
                         if (turnEl) {
                             for (const el of turnEl.querySelectorAll('.tool-block:not(.complete)')) {
                                 el.remove();
@@ -722,10 +748,11 @@ async function sendMessage() {
     } finally {
         currentAbortController = null;
         setStreaming(false);
-        await loadConversations();
         if (isNewConversation && currentConversationId) {
+            // Fire title generation immediately (don't await — runs in background)
             generateTitle(currentConversationId);
         }
+        await loadConversations();
     }
 }
 

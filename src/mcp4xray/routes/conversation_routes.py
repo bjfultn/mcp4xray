@@ -47,16 +47,16 @@ async def generate_title(conv_id: int, request: Request, user: dict = Depends(re
         if api_key:
             provider, model_id = "openai", "gpt-4o-mini"
         else:
-            title = user_msg[:40].strip()
-            if len(user_msg) > 40:
+            title = user_msg[:30].strip()
+            if len(user_msg) > 30:
                 title += "..."
             await db.set_conversation_title(conv_id, title)
             return {"title": title}
 
-    prompt = "Generate a very short chat title (2-3 words, no quotes) for this conversation.\n\n"
-    prompt += f"User: {user_msg[:300]}\n"
+    prompt = "Title this chat in 2-3 words. No quotes, no punctuation.\n\n"
+    prompt += f"User: {user_msg[:200]}\n"
     if asst_msg:
-        prompt += f"Assistant: {asst_msg[:300]}"
+        prompt += f"Assistant: {asst_msg[:200]}"
 
     llm = create_llm_backend(provider, model_id, api_key=api_key)
     try:
@@ -65,10 +65,10 @@ async def generate_title(conv_id: int, request: Request, user: dict = Depends(re
             tools=None,
             system_prompt="",
         )
-        title = response.text.strip().strip('"\'')[:40]
+        title = response.text.strip().strip('"\'').split('\n')[0][:30]
     except Exception:
-        title = user_msg[:40].strip()
-        if len(user_msg) > 40:
+        title = user_msg[:30].strip()
+        if len(user_msg) > 30:
             title += "..."
 
     await db.set_conversation_title(conv_id, title)

@@ -283,9 +283,17 @@ class LLMBackend:
             "max_tokens": 4096,
         }
         if system_prompt:
-            payload["system"] = system_prompt
+            payload["system"] = [
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
         if tools:
-            payload["tools"] = tools
+            cached_tools = [dict(t) for t in tools]
+            cached_tools[-1]["cache_control"] = {"type": "ephemeral"}
+            payload["tools"] = cached_tools
 
         headers = {
             "Content-Type": "application/json",
