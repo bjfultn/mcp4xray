@@ -16,6 +16,66 @@ MAX_TOOL_ITERATIONS = 20
 # Max chars of a tool result to feed back to the LLM. Large results (e.g.
 # 10k-row tables) are truncated for the LLM but sent in full to the UI.
 _TOOL_RESULT_LLM_CAP = 4000
+# Approximate token budget for conversation history. ~4 chars per token.
+_MAX_HISTORY_TOKENS = 100_000
+_CHARS_PER_TOKEN = 4
+
+
+def _estimate_tokens(messages: list[dict[str, Any]]) -> int:
+    """Rough token estimate: ~4 chars per token."""
+    return sum(len(m.get("content", "")) for m in messages) // _CHARS_PER_TOKEN
+
+
+def trim_messages(
+    messages: list[dict[str, Any]],
+    max_tokens: int = _MAX_HISTORY_TOKENS,
+) -> list[dict[str, Any]]:
+    """Trim conversation history to fit within a token budget.
+
+    Keeps the first user message (establishes the topic) and the most
+    recent messages. Drops messages from the middle when over budget,
+    inserting a note so the LLM knows context was trimmed.
+    """
+    if _estimate_tokens(messages) <= max_tokens:
+        return messages
+
+    if len(messages) <= 2:
+        return messages
+
+    # Always keep the first message (original user query)
+    first = messages[0]
+    rest = messages[1:]
+
+    # Budget remaining after the first message
+    first_tokens = len(first.get("content", "")) // _CHARS_PER_TOKEN
+    budget = max_tokens - first_tokens
+
+    # Walk backwards from the end, accumulating messages that fit
+    kept_tail: list[dict[str, Any]] = []
+    used = 0
+    for msg in reversed(rest):
+        msg_tokens = len(msg.get("content", "")) // _CHARS_PER_TOKEN
+        if used + msg_tokens > budget:
+            break
+        kept_tail.append(msg)
+        used += msg_tokens
+
+    kept_tail.reverse()
+
+    # If we couldn't even keep one recent message, keep just the last one
+    if not kept_tail:
+        kept_tail = [rest[-1]]
+
+    trimmed_count = len(rest) - len(kept_tail)
+    if trimmed_count > 0:
+        note = {
+            "role": "user",
+            "content": f"[{trimmed_count} earlier messages trimmed to fit context window]",
+        }
+        return [first, note] + kept_tail
+
+    return [first] + kept_tail
+
 
 BASE_SYSTEM_PROMPT = """\
 You are an expert X-ray astronomy archive assistant with deep knowledge of \
@@ -113,9 +173,10 @@ async def run_chat_turn(
     if mcp_instructions:
         system_prompt += "\nMission server context:\n" + mcp_instructions
     tools = getattr(mcp, "tools", []) or []
-    working_messages = list(messages)
+    working_messages = trim_messages(list(messages))
 
     for _ in range(max_iterations):
+        working_messages = trim_messages(working_messages)
         try:
             response: LLMResponse = await llm.complete(working_messages, tools, system_prompt)
         except Exception as exc:

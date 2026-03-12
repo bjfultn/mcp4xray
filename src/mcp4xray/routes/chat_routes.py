@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from mcp4xray.auth import require_auth
+from mcp4xray.chat import trim_messages
 from mcp4xray.llm import create_llm_backend
 from mcp4xray.mcp_client import MCPClient
 from mcp4xray.chat import run_chat_turn
@@ -78,7 +79,7 @@ def _build_history(prev_messages: list[dict]) -> list[dict]:
         elif role == "tool_result":
             truncated = _truncate_tool_result(m["content"])
             messages.append({"role": "user", "content": f"[Tool result: {truncated}]"})
-    return messages
+    return trim_messages(messages)
 
 
 class ChatRequest(BaseModel):
