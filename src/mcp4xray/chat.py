@@ -12,7 +12,7 @@ from typing import Any, AsyncIterator
 
 from mcp4xray.llm import LLMBackend, LLMResponse
 
-MAX_TOOL_ITERATIONS = 20
+MAX_TOOL_ITERATIONS = 10
 # Max chars of a tool result to feed back to the LLM. Large results (e.g.
 # 10k-row tables) are truncated for the LLM but sent in full to the UI.
 _TOOL_RESULT_LLM_CAP = 4000
@@ -85,6 +85,19 @@ mission documentation. When working across missions, you understand the \
 differences in instrument capabilities, coordinate conventions, and archive \
 interfaces. You prefer precise, scientifically accurate responses and flag \
 ambiguities when archive queries could be interpreted multiple ways.
+
+Tool-calling rules:
+- You have a MAXIMUM of {max_iterations} tool calls per response. Plan ahead.
+- Be efficient: do not call the same tool twice with the same arguments.
+- Combine what you need: if you need column metadata to write a query, get \
+the metadata first, then write the query. Do not re-fetch metadata you \
+already have.
+- If you need to explore a table schema, one call to get_table_columns or \
+get_table_column_metadata is enough — do not call both for the same table.
+- Prefer to construct a well-formed ADQL query in one shot rather than \
+running exploratory queries. You are an expert — use your knowledge.
+- If a tool call fails, do not retry with the same arguments. Adjust your \
+approach or explain the issue to the user.
 
 Formatting rules:
 - Do not use emojis. This is a professional research tool.
@@ -169,7 +182,7 @@ async def run_chat_turn(
     stream progress to a UI.
     """
     mcp_instructions = getattr(mcp, "instructions", "") or ""
-    system_prompt = BASE_SYSTEM_PROMPT
+    system_prompt = BASE_SYSTEM_PROMPT.format(max_iterations=max_iterations)
     if mcp_instructions:
         system_prompt += "\nMission server context:\n" + mcp_instructions
     tools = getattr(mcp, "tools", []) or []
