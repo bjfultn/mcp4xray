@@ -12,7 +12,7 @@ from typing import Any, AsyncIterator
 
 from mcp4xray.llm import LLMBackend, LLMResponse
 
-MAX_TOOL_ITERATIONS = 10
+MAX_TOOL_ITERATIONS = 20
 # Max chars of a tool result to feed back to the LLM. Large results (e.g.
 # 10k-row tables) are truncated for the LLM but sent in full to the UI.
 _TOOL_RESULT_LLM_CAP = 4000
