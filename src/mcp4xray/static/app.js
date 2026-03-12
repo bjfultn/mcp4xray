@@ -443,7 +443,7 @@ function appendSavedToolResult(content) {
                 '</span>' +
             '</div>';
 
-        const tableEl = buildSortableTable(cols, rows);
+        const tableEl = buildSortableTable(cols, rows, _lastTableResult);
         toolBlock.appendChild(tableEl);
     } else {
         let prettyContent;
@@ -687,7 +687,7 @@ async function sendMessage() {
                                     '</span>' +
                                 '</div>';
 
-                            const tableEl = buildSortableTable(cols, rows);
+                            const tableEl = buildSortableTable(cols, rows, _lastTableResult);
                             resultBlock.appendChild(tableEl);
                         } else {
                             let prettyContent;

@@ -31,6 +31,10 @@ Formatting rules:
 - Use plain markdown: headers, bold, lists, code blocks, and tables.
 - When presenting tabular data, use markdown pipe tables so the UI can render \
 them as sortable, downloadable tables.
+- When a tool already returned a large table, do NOT repeat the full table in \
+your response. The UI already displays the tool result as a sortable, \
+downloadable table. Instead, summarize key findings or highlight interesting \
+rows. You may include a small illustrative table (5-10 rows) if useful.
 - Be concise. Lead with the answer, not the reasoning.
 """
 
@@ -52,8 +56,9 @@ class ChatEvent:
 def _truncate_for_llm(result_text: str) -> str:
     """Truncate a tool result for the LLM's working context.
 
-    For tabular MCP results, produces a compact summary with column names,
-    row count, and a few sample rows. For other results, plain truncation.
+    Only truncates results that have a ``rows`` key (query results).
+    Schema/metadata results (column lists, table lists, examples) are
+    kept in full since the LLM needs them to build correct queries.
     """
     if len(result_text) <= _TOOL_RESULT_LLM_CAP:
         return result_text
@@ -71,18 +76,23 @@ def _truncate_for_llm(result_text: str) -> str:
                     inner = json.loads(item["text"])
                 except (json.JSONDecodeError, TypeError):
                     break
-                if isinstance(inner, dict) and "columns" in inner and "rows" in inner:
-                    cols = inner["columns"]
-                    rows = inner["rows"]
-                    total = inner.get("row_count", len(rows))
-                    summary = {
-                        "columns": cols,
-                        "row_count": total,
-                        "preview_rows": rows[:5],
-                        "note": f"Showing 5 of {total} rows. Full data was sent to the user.",
-                    }
-                    return json.dumps({"content": [{"type": "text", "text": json.dumps(summary)}]})
+                # Only truncate if it has "rows" — that's a query result.
+                # Metadata results (columns, table_names, examples) have no
+                # "rows" key and are kept verbatim.
+                if isinstance(inner, dict) and "rows" in inner:
+                    truncated = dict(inner)
+                    rows = truncated.pop("rows")
+                    total = truncated.get("row_count", len(rows))
+                    truncated["preview_rows"] = rows[:5]
+                    truncated["note"] = (
+                        f"Showing 5 of {total} rows. The full table is already "
+                        f"displayed to the user as a sortable, downloadable table. "
+                        f"Do not repeat it — summarize findings instead."
+                    )
+                    return json.dumps({"content": [{"type": "text", "text": json.dumps(truncated)}]})
 
+    # No rows key found — keep in full (metadata, schemas, etc.)
+    # Only fall back to hard truncation for truly huge non-structured results
     return result_text[:_TOOL_RESULT_LLM_CAP] + f"... [{len(result_text)} chars truncated]"
 
 

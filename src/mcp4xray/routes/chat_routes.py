@@ -19,13 +19,21 @@ _TOOL_RESULT_CAP = 800
 
 
 def _truncate_tool_result(content: str) -> str:
-    """Produce a short summary of a tool result for conversation history."""
+    """Produce a short summary of a tool result for conversation history.
+
+    Only truncates results with a ``rows`` key (query results).
+    Schema/metadata results (column lists, table lists, examples) are
+    kept in full so the LLM can reference them for building queries.
+    """
+    if len(content) <= _TOOL_RESULT_CAP:
+        return content
+
     try:
         parsed = json.loads(content)
     except (json.JSONDecodeError, TypeError):
-        return content[:_TOOL_RESULT_CAP]
+        return content[:_TOOL_RESULT_CAP] + f"... [{len(content)} chars total]"
 
-    # Structured MCP result with tabular data inside
+    # Structured MCP result
     if isinstance(parsed, dict) and isinstance(parsed.get("content"), list):
         for item in parsed["content"]:
             if item.get("type") == "text":
@@ -33,23 +41,18 @@ def _truncate_tool_result(content: str) -> str:
                     inner = json.loads(item["text"])
                 except (json.JSONDecodeError, TypeError):
                     break
-                if isinstance(inner, dict) and "columns" in inner and "rows" in inner:
-                    cols = inner["columns"]
-                    rows = inner["rows"]
-                    total = inner.get("row_count", len(rows))
-                    preview_rows = rows[:3]
-                    summary = {
-                        "columns": cols,
-                        "row_count": total,
-                        "preview_rows": preview_rows,
-                    }
-                    return json.dumps(summary)
+                # Only truncate if it has "rows" — query results.
+                # Metadata (columns, table_names, examples) kept verbatim.
+                if isinstance(inner, dict) and "rows" in inner:
+                    truncated = dict(inner)
+                    rows = truncated.pop("rows")
+                    total = truncated.get("row_count", len(rows))
+                    truncated["preview_rows"] = rows[:3]
+                    truncated["note"] = f"3 of {total} rows shown"
+                    return json.dumps(truncated)
 
-    # Generic: just truncate
-    short = content[:_TOOL_RESULT_CAP]
-    if len(content) > _TOOL_RESULT_CAP:
-        short += f"... [{len(content)} chars total]"
-    return short
+    # No rows — keep in full (metadata, schemas, etc.)
+    return content
 
 
 def _build_history(prev_messages: list[dict]) -> list[dict]:

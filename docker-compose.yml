@@ -10,6 +10,15 @@ services:
       - .env
     environment:
       - DATABASE_URL=sqlite:///./data/mcp4xray.db
+    depends_on:
+      - mcp
+    restart: unless-stopped
+
+  mcp:
+    build: laiss_hack/
+    ports:
+      - "8001:8001"
+      - "8002:8002"
     restart: unless-stopped
 
   mock-mcp:

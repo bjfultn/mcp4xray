@@ -2,11 +2,11 @@
   "servers": [
     {
       "name": "Chandra",
-      "url": "http://host.docker.internal:8001/mcp"
+      "url": "http://mcp:8001/mcp"
     },
     {
       "name": "XMM-Newton",
-      "url": "http://host.docker.internal:8002/mcp"
+      "url": "http://mcp:8002/mcp"
     }
   ],
   "models": [
