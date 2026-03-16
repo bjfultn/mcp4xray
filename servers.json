@@ -17,7 +17,8 @@
     {"id": "gemini-3.1-pro-preview", "name": "Gemini 3.1 Pro", "provider": "gemini"},
     {"id": "gemini-3-flash-preview", "name": "Gemini 3 Flash", "provider": "gemini"},
     {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "provider": "gemini"},
-    {"id": "qwen3:14b", "name": "Qwen3 14B", "provider": "ollama", "base_url": "http://ogsrotag2423.no-ip.org:11434/v1"},
-    {"id": "qwen3:8b", "name": "Qwen3 8B", "provider": "ollama", "base_url": "http://ogsrotag2423.no-ip.org:11434/v1"}
+    {"id": "qwen3:14b", "name": "Qwen3 14B", "provider": "ollama", "base_url": "https://bfulton:gj3470b@llm.adaptiveintelsolutions.com/v1"},
+    {"id": "qwen3:8b", "name": "Qwen3 8B", "provider": "ollama", "base_url": "https://bfulton:gj3470b@llm.adaptiveintelsolutions.com/v1"},
+    {"id": "qwen3.5:35b", "name": "Qwen3.5 35B", "provider": "ollama", "base_url": "https://bfulton:gj3470b@llm.adaptiveintelsolutions.com/v1"}
   ]
 }
