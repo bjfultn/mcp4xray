@@ -93,9 +93,6 @@ class TestAppConfig:
         monkeypatch.setenv("ADMIN_USERNAME", "astro")
         monkeypatch.setenv("ADMIN_PASSWORD", "hunter2")
         monkeypatch.setenv("DATABASE_URL", "postgresql://localhost/xray")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-xxx")
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-oai-xxx")
-        monkeypatch.setenv("GEMINI_API_KEY", "gem-xxx")
 
         cfg = AppConfig.from_env()
 
@@ -103,9 +100,6 @@ class TestAppConfig:
         assert cfg.admin_username == "astro"
         assert cfg.admin_password == "hunter2"
         assert cfg.database_url == "postgresql://localhost/xray"
-        assert cfg.anthropic_api_key == "sk-ant-xxx"
-        assert cfg.openai_api_key == "sk-oai-xxx"
-        assert cfg.gemini_api_key == "gem-xxx"
 
     def test_from_env_uses_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Clear any existing env vars that might interfere
@@ -114,9 +108,6 @@ class TestAppConfig:
             "ADMIN_USERNAME",
             "ADMIN_PASSWORD",
             "DATABASE_URL",
-            "ANTHROPIC_API_KEY",
-            "OPENAI_API_KEY",
-            "GEMINI_API_KEY",
         ]:
             monkeypatch.delenv(var, raising=False)
 
@@ -126,9 +117,6 @@ class TestAppConfig:
         assert cfg.admin_username == "admin"
         assert cfg.admin_password == "changeme"
         assert cfg.database_url == "sqlite:///./mcp4xray.db"
-        assert cfg.anthropic_api_key == ""
-        assert cfg.openai_api_key == ""
-        assert cfg.gemini_api_key == ""
 
 
 class TestModelEntry:
