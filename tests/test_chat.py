@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from mcp4xray.chat import ChatEvent, run_chat_turn
+from mcp4xray.chat import BASE_SYSTEM_PROMPT, ChatEvent, run_chat_turn
 from mcp4xray.llm import LLMResponse, ToolCall
 
 
@@ -81,7 +81,8 @@ class TestChatTurnTextOnly:
 
         await _collect_events(llm, mcp, messages)
 
-        llm.complete.assert_called_once_with(messages, tools, "System prompt here")
+        expected_prompt = BASE_SYSTEM_PROMPT.format(max_iterations=20) + "\nMission server context:\nSystem prompt here"
+        llm.complete.assert_called_once_with(messages, tools, expected_prompt)
 
     @pytest.mark.asyncio
     async def test_does_not_call_tool(self) -> None:
