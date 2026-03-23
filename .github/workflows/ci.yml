@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/ -q --tb=short -x
+
+  deploy:
+    needs: [test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger deploy webhook
+        env:
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+        run: |
+          BODY='{}'
+          SIG=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "$DEPLOY_SECRET" | awk '{print $2}')
+          curl -sf -X POST https://deploy.adaptiveintelsolutions.com/deploy/mcp4xray \
+            -H "X-Signature: $SIG" \
+            -H "Content-Type: application/json" \
+            -d "$BODY"
