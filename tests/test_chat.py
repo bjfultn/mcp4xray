@@ -20,7 +20,7 @@ def _make_mock_llm(
     llm = AsyncMock()
     llm.complete = AsyncMock(side_effect=responses)
 
-    def _append(messages, tool_name, arguments, result):
+    def _append(messages, tool_name, arguments, result, response=None):
         new = list(messages)
         new.append({"role": "assistant", "content": f"called {tool_name}"})
         new.append({"role": "tool", "content": json.dumps(result)})
